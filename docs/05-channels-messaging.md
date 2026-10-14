@@ -12,6 +12,7 @@ flowchart LR
         TG["Telegram"]
         DC["Discord"]
         SL["Slack"]
+        MM["Mattermost"]
         FS["Feishu/Lark"]
         ZL["Zalo Bot"]
         ZLP["Zalo Personal"]
@@ -36,6 +37,7 @@ flowchart LR
     TG --> CH
     DC --> CH
     SL --> CH
+    MM --> CH
     FS --> CH
     ZL --> CH
     ZLP --> CH
@@ -49,6 +51,7 @@ flowchart LR
     SEND --> TG
     SEND --> DC
     SEND --> SL
+    SEND --> MM
     SEND --> FS
     SEND --> ZL
     SEND --> ZLP
@@ -165,12 +168,12 @@ Every channel must implement the base interface:
 
 | Interface | Purpose | Implemented By |
 |-----------|---------|----------------|
-| `StreamingChannel` | Real-time streaming updates | Telegram, Slack |
+| `StreamingChannel` | Real-time streaming updates | Mattermost, Telegram, Slack |
 | `WebhookChannel` | Webhook HTTP handler mounting | Facebook, Feishu/Lark, Pancake |
-| `ReactionChannel` | Status reactions on messages | Telegram, Slack, Feishu |
+| `ReactionChannel` | Status reactions on messages | Mattermost, Telegram, Slack, Feishu |
 | `ActivityIndicatorChannel` | Ephemeral "agent is working" indicator | Bitrix24 |
-| `BlockReplyChannel` | Override gateway block_reply setting | Discord, Feishu/Lark, Pancake, Slack, Zalo Bot, Zalo Personal |
-| `ChatBehaviorChannel` | Override gateway chat_behavior setting | Bitrix24, Discord, Feishu/Lark, Pancake, Slack, Telegram, WhatsApp, Zalo Bot, Zalo Personal |
+| `BlockReplyChannel` | Override gateway block_reply setting | Discord, Feishu/Lark, Mattermost, Pancake, Slack, Zalo Bot, Zalo Personal |
+| `ChatBehaviorChannel` | Override gateway chat_behavior setting | Bitrix24, Discord, Feishu/Lark, Mattermost, Pancake, Slack, Telegram, WhatsApp, Zalo Bot, Zalo Personal |
 | `ReasoningDeliveryChannel` | Override channel-visible reasoning delivery | Telegram |
 
 `BaseChannel` provides a shared implementation that all channels embed: allowlist matching, `HandleMessage()`, `CheckPolicy()`, and user ID extraction.
@@ -865,12 +868,43 @@ The bot app must have the `imbot` scope granted. The `disk` scope is **not** req
 
 ---
 
+## 17. Mattermost
+
+The Mattermost channel connects through a bot account: inbound posts arrive over the API v4 websocket, replies go out through the REST API. It uses a small built-in client (`internal/channels/mattermost/client.go`) on top of `gorilla/websocket` instead of the Mattermost server module. Configured only as a DB channel instance (Web UI, `goclaw channels add`, HTTP/WS API) — there is no `config.json` / env-var mode.
+
+### Setup
+
+1. In Mattermost: **System Console → Integrations → Bot Accounts** → enable bot accounts, then **Integrations → Bot Accounts → Add Bot Account** and copy the access token. A personal access token of a regular user also works.
+2. Add the bot to the team and to every channel it should read (the websocket only delivers events for channels the bot is a member of).
+3. Create a channel instance of type `mattermost`:
+   - credentials: `bot_token`
+   - config: `server_url` (e.g. `https://chat.example.com`; `http` is allowed for internal servers)
+
+### Key Behaviors
+
+- **Websocket**: `/api/v4/websocket` with `authentication_challenge`; client pings every 30s, reconnects with exponential backoff (1s → 60s). A rejected token stops the channel with an `auth` failure instead of reconnecting forever
+- **Peer kinds**: channel type `D` → direct; `O`, `P`, `G` (public, private, group DM) → group
+- **Mention gating**: `require_mention` default true. A post counts as a mention when the server lists the bot in `mentions` or the text contains `@botusername` as a whole word; the mention is stripped from content
+- **Threads**: in channels the bot always answers in a thread (rooted at the triggering post), and the whole thread is one session (`local_key = channelID:thread:rootID`). DMs stay flat unless the user replies in a thread. Thread replies include the root post as `[Replying to …]` context
+- **Thread participation cache**: after the bot replies in a thread, later posts there trigger it without @mention for `thread_ttl` hours (default 24, `0` = always require @mention)
+- **Group history**: un-mentioned posts are kept per channel (top-level) or per thread (`parent_history_key` = channel) and prepended on the next mention
+- **Ignored posts**: the bot's own posts, system posts (`type` set) and posts from other bots/integrations (`props.from_bot`)
+- **Dedup**: post ID cache (5 min) against replays after reconnect. No channel-level debounce — bursts are merged by the gateway inbound debouncer
+- **Placeholder editing**: posts "Thinking..." and edits it with the first chunk of the reply; message limit 16,000 bytes per post (server limit 16,383 runes)
+- **Streaming**: optional (`dm_stream`, `group_stream`), edits the placeholder with 1000ms throttle
+- **Media**: inbound attachments downloaded from `/api/v4/files/{id}` with the bot token (20 MB per file), documents extracted to text; outbound files uploaded via `/api/v4/files` and posted as one attachment post (up to 10 files per post)
+- **Reactions**: `reaction_level` off/minimal/full with system emoji (thinking_face, hammer_and_wrench, white_check_mark, x, hourglass_flowing_sand)
+- **Formatting**: Mattermost renders Markdown natively, so replies are sent as-is
+- **Pairing / policies**: same `dm_policy` / `group_policy` semantics as Slack; `allowlist` accepts either user IDs or channel IDs in `allow_from`. DB instances default `group_policy` to `pairing`
+
+---
+
 ## File Reference
 
 | Module | Path | Purpose |
 |---|---|---|
 | Channel core | `internal/channels/` | `Channel` interface, `BaseChannel` (incl. `HandleMessageMedia()` method), `Manager` (StartAll/StopAll), outbound dispatcher, DB instance loader |
-| Platform adapters | `internal/channels/{telegram,feishu,discord,slack,whatsapp,zalo,bitrix24}/` | Per-platform: message handling, formatting, streaming, reactions, media, pairing |
+| Platform adapters | `internal/channels/{telegram,feishu,discord,slack,mattermost,whatsapp,zalo,bitrix24}/` | Per-platform: message handling, formatting, streaming, reactions, media, pairing |
 | Bitrix24 media | `internal/channels/bitrix24/download.go`, `send_media.go` | Inbound file download via `imbot.v2.File.download`, outbound upload via `imbot.v2.File.upload` |
 | Audio / STT | `internal/audio/` | Audio manager, STT chain resolution, legacy STT bridge |
 | Pairing & routing | `internal/store/pg/pairing.go`, `cmd/gateway_consumer.go` | Pairing code persistence, inbound message routing and cancel interception |
