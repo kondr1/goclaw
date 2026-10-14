@@ -203,6 +203,7 @@ export const configSchema: Record<string, FieldDef[]> = {
     { key: "dm_stream", label: "DM Streaming", type: "boolean", defaultValue: true, help: "Progressively edit the placeholder post as the LLM generates (DMs)" },
     { key: "group_stream", label: "Group Streaming", type: "boolean", defaultValue: false, help: "Progressively edit the placeholder post as the LLM generates (channels)" },
     { key: "thread_ttl", label: "Thread Participation TTL (hours)", type: "number", defaultValue: 24, help: "Hours before bot stops auto-replying in threads it participated in. 0 = always require @mention." },
+    { key: "group_dm_as_direct", label: "Group messages as DMs", type: "boolean", defaultValue: false, help: "Treat group direct messages (3–8 people) like DMs: reply to every message without @mention or threads, apply the DM policy. Off = handle them like channels." },
     { key: "reaction_level", label: "Reaction Level", type: "select", options: [{ value: "off", label: "Off" }, { value: "minimal", label: "Minimal (thinking + done)" }, { value: "full", label: "Full (all status emoji)" }], defaultValue: "off", help: "Show emoji reactions on user messages during agent processing" },
     { key: "allow_from", label: "Allowed Users", type: "tags", help: "Mattermost user IDs or channel IDs allowed to interact; empty = no allowlist filter" },
     ...chatBehaviorOverrideFields,

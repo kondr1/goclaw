@@ -466,6 +466,10 @@
       "label": "TTL tham gia luồng (giờ)",
       "help": "Số giờ trước khi bot ngừng tự động trả lời trong các luồng đã tham gia. 0 = luôn yêu cầu @đề cập."
     },
+    "group_dm_as_direct": {
+      "label": "Tin nhắn nhóm như DM",
+      "help": "Xử lý tin nhắn trực tiếp nhóm (3–8 người) như DM: trả lời mọi tin nhắn không cần @đề cập hay luồng, áp dụng chính sách DM. Tắt = xử lý như kênh."
+    },
     "skills": {
       "label": "Bộ lọc skill",
       "help": "Giới hạn skill khả dụng cho nhóm này"

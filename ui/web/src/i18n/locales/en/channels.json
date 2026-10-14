@@ -467,6 +467,10 @@
       "label": "Thread Participation TTL (hours)",
       "help": "Hours before bot stops auto-replying in threads it participated in. 0 = always require @mention."
     },
+    "group_dm_as_direct": {
+      "label": "Group messages as DMs",
+      "help": "Treat group direct messages (3–8 people) like DMs: reply to every message without @mention or threads, apply the DM policy. Off = handle them like channels."
+    },
     "skills": {
       "label": "Skills Filter",
       "help": "Limit available skills for this group"
