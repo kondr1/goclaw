@@ -355,7 +355,7 @@
     },
     "server_url": {
       "label": "URL máy chủ",
-      "help": "URL gốc của máy chủ Mattermost"
+      "help": "URL gốc của máy chủ Mattermost. Máy chủ trong mạng nội bộ (10.x, 192.168.x, localhost) cần đặt GOCLAW_ALLOW_PRIVATE_MATTERMOST_URLS=true trên gateway."
     },
     "proxy": {
       "label": "Proxy HTTP",

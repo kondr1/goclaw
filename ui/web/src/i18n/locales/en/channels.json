@@ -356,7 +356,7 @@
     },
     "server_url": {
       "label": "Server URL",
-      "help": "Base URL of your Mattermost server"
+      "help": "Base URL of your Mattermost server. A server on a private network (10.x, 192.168.x, localhost) also needs GOCLAW_ALLOW_PRIVATE_MATTERMOST_URLS=true on the gateway."
     },
     "proxy": {
       "label": "HTTP Proxy",

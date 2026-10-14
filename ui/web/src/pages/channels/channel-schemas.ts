@@ -195,7 +195,7 @@ export const configSchema: Record<string, FieldDef[]> = {
     ...chatBehaviorOverrideFields,
   ],
   mattermost: [
-    { key: "server_url", label: "Server URL", type: "text", required: true, placeholder: "https://chat.example.com", help: "Base URL of your Mattermost server" },
+    { key: "server_url", label: "Server URL", type: "text", required: true, placeholder: "https://chat.example.com", help: "Base URL of your Mattermost server. A server on a private network (10.x, 192.168.x, localhost) also needs GOCLAW_ALLOW_PRIVATE_MATTERMOST_URLS=true on the gateway." },
     { key: "dm_policy", label: "DM Policy", type: "select", options: dmPolicyOptions, defaultValue: "pairing", help: "How to handle direct messages from unknown users" },
     { key: "group_policy", label: "Group Policy", type: "select", options: groupPolicyOptions, defaultValue: "pairing", help: "How to handle messages from channels and group messages" },
     { key: "require_mention", label: "Require @mention in channels", type: "boolean", defaultValue: true, help: "Bot only responds when explicitly @mentioned in channels (recommended)" },

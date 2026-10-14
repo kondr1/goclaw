@@ -298,7 +298,7 @@
     },
     "server_url": {
       "label": "서버 URL",
-      "help": "Mattermost 서버의 기본 URL"
+      "help": "Mattermost 서버의 기본 URL. 사설 네트워크(10.x, 192.168.x, localhost)의 서버는 게이트웨이에 GOCLAW_ALLOW_PRIVATE_MATTERMOST_URLS=true 설정이 필요합니다."
     },
     "proxy": {
       "label": "HTTP 프록시",
