@@ -28,11 +28,15 @@ func (s *mmStream) Update(ctx context.Context, fullText string) {
 		return
 	}
 
-	text := fullText
+	// Finished attachment blocks are hidden while streaming; Send renders them.
+	text, _ := extractAttachments(fullText)
+	if text == "" {
+		return
+	}
 	if len(text) > maxMessageLen {
 		text = channels.ChunkMarkdown(text, maxMessageLen)[0] + "..."
 	}
-	if err := s.api.patchPost(ctx, s.postID, text); err != nil {
+	if err := s.api.patchPost(ctx, s.postID, text, nil); err != nil {
 		slog.Debug("mattermost stream update failed", "error", err)
 		return
 	}

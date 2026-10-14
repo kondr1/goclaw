@@ -259,8 +259,13 @@ func (c *apiClient) createPost(ctx context.Context, post *mmPost) (*mmPost, erro
 	return &created, nil
 }
 
-func (c *apiClient) patchPost(ctx context.Context, postID, message string) error {
-	patch := map[string]string{"message": message}
+// patchPost replaces the message of a post and, when props is non-nil, its
+// props (e.g. message attachments).
+func (c *apiClient) patchPost(ctx context.Context, postID, message string, props map[string]any) error {
+	patch := map[string]any{"message": message}
+	if props != nil {
+		patch["props"] = props
+	}
 	return c.doJSON(ctx, http.MethodPut, "/posts/"+url.PathEscape(postID)+"/patch", patch, nil)
 }
 

@@ -897,6 +897,7 @@ The Mattermost channel connects through a bot account: inbound posts arrive over
 - **Media**: inbound attachments downloaded from `/api/v4/files/{id}` with the bot token (20 MB per file), documents extracted to text; outbound files streamed to `/api/v4/files` (multipart through a pipe, never buffered in memory) and posted as one attachment post (up to 10 files per post)
 - **Reactions**: `reaction_level` off/minimal/full with system emoji (thinking_face, hammer_and_wrench, white_check_mark, x, hourglass_flowing_sand)
 - **Formatting**: Mattermost renders Markdown natively, so replies are sent as-is
+- **Attachment cards**: the agent may write a fenced block with language `attachment` holding a JSON object or array of Mattermost message attachments (`color`, `pretext`, `title`, `title_link`, `text`, `fields`, `image_url`, `thumb_url`, `author_*`, `footer*`). Valid blocks are removed from the text and sent as `props.attachments` on the last text post (or a card-only post); invalid JSON stays in the text. Interactive `actions` are not supported. The system prompt for Mattermost explains the syntax (`buildChannelFormattingHint`); streaming hides finished blocks
 - **Pairing / policies**: same `dm_policy` / `group_policy` semantics as Slack; `allowlist` accepts either user IDs or channel IDs in `allow_from`. DB instances default `group_policy` to `pairing`
 
 ---

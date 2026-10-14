@@ -36,7 +36,7 @@ func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 	// Placeholder update (LLM retry notification) keeps the placeholder.
 	if msg.Metadata["placeholder_update"] == "true" {
 		if pID, ok := c.placeholders.Load(placeholderKey); ok {
-			if err := c.api.patchPost(ctx, pID.(string), msg.Content); err != nil {
+			if err := c.api.patchPost(ctx, pID.(string), msg.Content, nil); err != nil {
 				slog.Debug("mattermost: placeholder update failed", "error", err)
 			}
 		}
@@ -44,23 +44,41 @@ func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 	}
 	defer c.stopTyping(placeholderKey)
 
+	text, cards := extractAttachments(msg.Content)
 	fileIDs, failed := c.uploadMedia(ctx, channelID, msg.Media)
-	chunks := channels.ChunkMarkdown(msg.Content, maxMessageLen)
+
+	// Attachment cards go under the last text chunk (or an otherwise empty
+	// post); upload failure notes follow after them.
+	chunks := channels.ChunkMarkdown(text, maxMessageLen)
+	cardsAt := -1
+	if len(cards) > 0 {
+		if len(chunks) == 0 {
+			chunks = []string{""}
+		}
+		cardsAt = len(chunks) - 1
+	}
 	for _, name := range failed {
 		chunks = append(chunks, fmt.Sprintf("[File upload failed: %s]", name))
 	}
+	propsFor := func(i int) map[string]any {
+		if i != cardsAt {
+			return nil
+		}
+		return map[string]any{"attachments": cards}
+	}
 
+	sent := 0
 	if pID, ok := c.placeholders.LoadAndDelete(placeholderKey); ok {
 		placeholderID := pID.(string)
 		switch {
 		case len(chunks) == 0:
-			// NO_REPLY or attachments only: the placeholder has nothing to show.
+			// NO_REPLY or files only: the placeholder has nothing to show.
 			if err := c.api.deletePost(ctx, placeholderID); err != nil {
 				slog.Debug("mattermost: placeholder delete failed", "error", err)
 			}
 		default:
-			if err := c.api.patchPost(ctx, placeholderID, chunks[0]); err == nil {
-				chunks = chunks[1:]
+			if err := c.api.patchPost(ctx, placeholderID, chunks[0], propsFor(0)); err == nil {
+				sent = 1
 			} else {
 				slog.Warn("mattermost: placeholder edit failed, sending new post",
 					"channel_id", channelID, "error", err)
@@ -68,8 +86,9 @@ func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 		}
 	}
 
-	for _, chunk := range chunks {
-		if _, err := c.api.createPost(ctx, &mmPost{ChannelID: channelID, RootID: rootID, Message: chunk}); err != nil {
+	for i := sent; i < len(chunks); i++ {
+		post := &mmPost{ChannelID: channelID, RootID: rootID, Message: chunks[i], Props: propsFor(i)}
+		if _, err := c.api.createPost(ctx, post); err != nil {
 			return fmt.Errorf("send mattermost post: %w", err)
 		}
 	}
