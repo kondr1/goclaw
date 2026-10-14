@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
+	"github.com/nextlevelbuilder/goclaw/internal/config"
 )
 
 func TestStartStop_IsIdempotent(t *testing.T) {
@@ -20,7 +21,7 @@ func TestStartStop_IsIdempotent(t *testing.T) {
 		_, _, _ = conn.ReadMessage() // hold until the client disconnects
 	}
 
-	ch, err := New(Config{ServerURL: fs.URL, BotToken: testToken}, bus.New(), nil, nil)
+	ch, err := New(config.MattermostConfig{ServerURL: fs.URL, BotToken: testToken}, bus.New(), nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -49,7 +50,7 @@ func TestStartStop_IsIdempotent(t *testing.T) {
 
 func TestStart_RejectedTokenFails(t *testing.T) {
 	fs := newFakeServer(t)
-	ch, err := New(Config{ServerURL: fs.URL, BotToken: "revoked"}, bus.New(), nil, nil)
+	ch, err := New(config.MattermostConfig{ServerURL: fs.URL, BotToken: "revoked"}, bus.New(), nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

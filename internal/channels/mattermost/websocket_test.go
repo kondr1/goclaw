@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/nextlevelbuilder/goclaw/internal/config"
 )
 
 // serveAuth reads the authentication challenge and answers with status.
@@ -79,7 +81,7 @@ func TestConnectAndServe_DeliversPostedEvents(t *testing.T) {
 
 func TestConnectAndServe_RejectedTokenIsAuthError(t *testing.T) {
 	fs := newFakeServer(t)
-	ch, _ := newTestChannel(t, fs, func(c *Config) { c.BotToken = "wrong" })
+	ch, _ := newTestChannel(t, fs, func(c *config.MattermostConfig) { c.BotToken = "wrong" })
 
 	fs.wsHandler = func(conn *websocket.Conn) {
 		serveAuth(t, conn, "OK")

@@ -33,27 +33,10 @@ const (
 	eventQueueSize        = 256
 )
 
-// Config is the resolved per-instance configuration.
-type Config struct {
-	ServerURL      string
-	BotToken       string
-	AllowFrom      []string
-	DMPolicy       string
-	GroupPolicy    string
-	RequireMention *bool
-	HistoryLimit   int
-	DMStream       *bool
-	GroupStream    *bool
-	ReactionLevel  string
-	BlockReply     *bool
-	ChatBehavior   *config.ChatBehaviorConfig
-	ThreadTTL      *int
-}
-
 // Channel is a Mattermost bot connection.
 type Channel struct {
 	*channels.BaseChannel
-	cfg         Config
+	cfg         config.MattermostConfig
 	api         *apiClient
 	botUserID   string // populated on Start() via /users/me
 	botUsername string
@@ -101,8 +84,8 @@ var _ channels.BlockReplyChannel = (*Channel)(nil)
 var _ channels.ChatBehaviorChannel = (*Channel)(nil)
 var _ channels.PendingCompactable = (*Channel)(nil)
 
-// New creates a Mattermost channel from a resolved config.
-func New(cfg Config, msgBus *bus.MessageBus, pairingSvc store.PairingStore, pendingStore store.PendingMessageStore) (*Channel, error) {
+// New creates a Mattermost channel from config.json or a DB instance.
+func New(cfg config.MattermostConfig, msgBus *bus.MessageBus, pairingSvc store.PairingStore, pendingStore store.PendingMessageStore) (*Channel, error) {
 	serverURL, err := normalizeServerURL(cfg.ServerURL)
 	if err != nil {
 		return nil, err

@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
+	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
@@ -225,9 +226,9 @@ func writeJSONResponse(w http.ResponseWriter, v any) {
 
 // newTestChannel builds a running channel against the fake server without
 // opening the websocket.
-func newTestChannel(t *testing.T, fs *fakeServer, mutate func(*Config)) (*Channel, *bus.MessageBus) {
+func newTestChannel(t *testing.T, fs *fakeServer, mutate func(*config.MattermostConfig)) (*Channel, *bus.MessageBus) {
 	t.Helper()
-	cfg := Config{
+	cfg := config.MattermostConfig{
 		ServerURL:   fs.URL,
 		BotToken:    testToken,
 		DMPolicy:    "open",

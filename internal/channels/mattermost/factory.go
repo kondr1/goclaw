@@ -31,26 +31,27 @@ type mattermostInstanceConfig struct {
 	ThreadTTL      *int                       `json:"thread_ttl,omitempty"`
 }
 
-// parseInstance decodes instance credentials and config into a Config.
-func parseInstance(creds, cfg json.RawMessage) (Config, error) {
+// parseInstance decodes instance credentials and config into a channel config.
+func parseInstance(creds, cfg json.RawMessage) (config.MattermostConfig, error) {
 	var c mattermostCreds
 	if len(creds) > 0 {
 		if err := json.Unmarshal(creds, &c); err != nil {
-			return Config{}, fmt.Errorf("decode mattermost credentials: %w", err)
+			return config.MattermostConfig{}, fmt.Errorf("decode mattermost credentials: %w", err)
 		}
 	}
 	if c.BotToken == "" {
-		return Config{}, fmt.Errorf("mattermost bot_token is required")
+		return config.MattermostConfig{}, fmt.Errorf("mattermost bot_token is required")
 	}
 
 	var ic mattermostInstanceConfig
 	if len(cfg) > 0 {
 		if err := json.Unmarshal(cfg, &ic); err != nil {
-			return Config{}, fmt.Errorf("decode mattermost config: %w", err)
+			return config.MattermostConfig{}, fmt.Errorf("decode mattermost config: %w", err)
 		}
 	}
 
-	out := Config{
+	out := config.MattermostConfig{
+		Enabled:        true,
 		ServerURL:      ic.ServerURL,
 		BotToken:       c.BotToken,
 		AllowFrom:      ic.AllowFrom,

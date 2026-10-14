@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 )
 
@@ -149,7 +150,7 @@ func TestHandlePosted_ThreadParticipationAndRootContext(t *testing.T) {
 func TestHandlePosted_ThreadTTLDisabledRequiresMention(t *testing.T) {
 	fs := newFakeServer(t)
 	zero := 0
-	ch, msgBus := newTestChannel(t, fs, func(c *Config) { c.ThreadTTL = &zero })
+	ch, msgBus := newTestChannel(t, fs, func(c *config.MattermostConfig) { c.ThreadTTL = &zero })
 	ctx := context.Background()
 
 	ch.handlePostedEvent(ctx, postedEvent(t, mmPost{ID: "r1", UserID: "u1", ChannelID: "c1", Message: "@goclawbot hi"}, "O", nil))
@@ -164,7 +165,7 @@ func TestHandlePosted_ThreadTTLDisabledRequiresMention(t *testing.T) {
 
 func TestHandlePosted_AllowlistAcceptsChannelID(t *testing.T) {
 	fs := newFakeServer(t)
-	ch, msgBus := newTestChannel(t, fs, func(c *Config) {
+	ch, msgBus := newTestChannel(t, fs, func(c *config.MattermostConfig) {
 		c.GroupPolicy = "allowlist"
 		c.AllowFrom = []string{"c-allowed"}
 	})
@@ -182,7 +183,7 @@ func TestHandlePosted_AllowlistAcceptsChannelID(t *testing.T) {
 
 func TestHandlePosted_GroupPairingUsesChannelTemplate(t *testing.T) {
 	fs := newFakeServer(t)
-	ch, msgBus := newTestChannel(t, fs, func(c *Config) { c.GroupPolicy = "pairing" })
+	ch, msgBus := newTestChannel(t, fs, func(c *config.MattermostConfig) { c.GroupPolicy = "pairing" })
 	ps := &fakePairingStore{}
 	ch.SetPairingService(ps)
 

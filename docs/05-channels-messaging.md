@@ -870,7 +870,7 @@ The bot app must have the `imbot` scope granted. The `disk` scope is **not** req
 
 ## 17. Mattermost
 
-The Mattermost channel connects through a bot account: inbound posts arrive over the API v4 websocket, replies go out through the REST API. It uses a small built-in client (`internal/channels/mattermost/client.go`) on top of `gorilla/websocket` instead of the Mattermost server module. Configured only as a DB channel instance (Web UI, `goclaw channels add`, HTTP/WS API) — there is no `config.json` / env-var mode.
+The Mattermost channel connects through a bot account: inbound posts arrive over the API v4 websocket, replies go out through the REST API. It uses a small built-in client (`internal/channels/mattermost/client.go`) on top of `gorilla/websocket` instead of the Mattermost server module. Configured as a DB channel instance (Web UI, `goclaw channels add`, HTTP/WS API) or, like Slack, through `channels.mattermost` in `config.json` / env vars (used only when no DB instance loader is active).
 
 ### Setup
 
@@ -879,6 +879,17 @@ The Mattermost channel connects through a bot account: inbound posts arrive over
 3. Create a channel instance of type `mattermost`:
    - credentials: `bot_token`
    - config: `server_url` (e.g. `https://chat.example.com`; `http` is allowed for internal servers)
+
+   Or set `channels.mattermost` in `config.json` (same keys as the instance config, plus `enabled` and `bot_token`).
+
+### Environment Variables
+
+```
+GOCLAW_MATTERMOST_SERVER_URL  → channels.mattermost.server_url
+GOCLAW_MATTERMOST_BOT_TOKEN   → channels.mattermost.bot_token
+```
+
+Auto-enables when both are set. `bot_token` is masked in `config.get` and never written to `config.json`. In config mode `group_policy` defaults to `open` (as for Slack); DB instances default to `pairing`.
 
 ### Key Behaviors
 
@@ -898,7 +909,7 @@ The Mattermost channel connects through a bot account: inbound posts arrive over
 - **Reactions**: `reaction_level` off/minimal/full with system emoji (thinking_face, hammer_and_wrench, white_check_mark, x, hourglass_flowing_sand)
 - **Formatting**: Mattermost renders Markdown natively, so replies are sent as-is
 - **Attachment cards**: the agent may write a fenced block with language `attachment` holding a JSON object or array of Mattermost message attachments (`color`, `pretext`, `title`, `title_link`, `text`, `fields`, `image_url`, `thumb_url`, `author_*`, `footer*`). Valid blocks are removed from the text and sent as `props.attachments` on the last text post (or a card-only post); invalid JSON stays in the text. Interactive `actions` are not supported. The system prompt for Mattermost explains the syntax (`buildChannelFormattingHint`); streaming hides finished blocks
-- **Pairing / policies**: same `dm_policy` / `group_policy` semantics as Slack; `allowlist` accepts either user IDs or channel IDs in `allow_from`. DB instances default `group_policy` to `pairing`
+- **Pairing / policies**: same `dm_policy` / `group_policy` semantics as Slack; `allowlist` accepts either user IDs or channel IDs in `allow_from`
 
 ---
 

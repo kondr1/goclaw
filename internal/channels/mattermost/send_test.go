@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
+	"github.com/nextlevelbuilder/goclaw/internal/config"
 )
 
 func TestSend_EditsPlaceholderThenPostsRemainingChunks(t *testing.T) {
@@ -184,7 +185,7 @@ func TestReactions_FollowLevelAndClear(t *testing.T) {
 		t.Fatal("reaction_level off must not react")
 	}
 
-	ch, _ := newTestChannel(t, fs, func(c *Config) { c.ReactionLevel = "full" })
+	ch, _ := newTestChannel(t, fs, func(c *config.MattermostConfig) { c.ReactionLevel = "full" })
 	if err := ch.OnReactionEvent(context.Background(), "dm1", "p1", "thinking"); err != nil {
 		t.Fatal(err)
 	}
