@@ -163,7 +163,7 @@ func (c *Channel) connectAndServe(ctx context.Context) (bool, error) {
 			authenticated = true
 			c.MarkHealthy("Connected")
 			slog.Info("mattermost: websocket connected", "channel", c.Name())
-		case "posted":
+		case "posted", "post_edited":
 			select {
 			case c.events <- ev:
 			case <-sessionCtx.Done():
@@ -173,7 +173,7 @@ func (c *Channel) connectAndServe(ctx context.Context) (bool, error) {
 	}
 }
 
-// eventWorker handles posted events sequentially so per-channel message order
+// eventWorker handles post events sequentially so per-channel message order
 // is preserved while the read loop keeps answering pings.
 func (c *Channel) eventWorker(ctx context.Context) {
 	for {
@@ -181,16 +181,22 @@ func (c *Channel) eventWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case ev := <-c.events:
-			c.handlePostedEvent(ctx, ev)
+			switch ev.Event {
+			case "posted":
+				c.handlePostedEvent(ctx, ev)
+			case "post_edited":
+				c.handlePostEditedEvent(ctx, ev)
+			}
 		}
 	}
 }
 
-// parsePostedEvent decodes the post JSON embedded in a "posted" event.
+// parsePostedEvent decodes the post JSON embedded in a "posted" or
+// "post_edited" event.
 func parsePostedEvent(ev wsEvent) (*mmPost, error) {
 	raw := ev.dataString("post")
 	if raw == "" {
-		return nil, fmt.Errorf("posted event without post")
+		return nil, fmt.Errorf("%s event without post", ev.Event)
 	}
 	var post mmPost
 	if err := json.Unmarshal([]byte(raw), &post); err != nil {

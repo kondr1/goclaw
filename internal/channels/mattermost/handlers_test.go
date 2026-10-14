@@ -226,6 +226,74 @@ func TestHandlePosted_DownloadsAttachments(t *testing.T) {
 	}
 }
 
+func TestHandleEdited_AddedMentionTriggersOnce(t *testing.T) {
+	fs := newFakeServer(t)
+	ch, msgBus := newTestChannel(t, fs, nil)
+	ctx := context.Background()
+	now := time.Now().UnixMilli()
+
+	original := mmPost{ID: "p1", CreateAt: now, UserID: "u1", ChannelID: "c1", Message: "who can check the deploy?"}
+	ch.handlePostedEvent(ctx, postedEvent(t, original, "O", nil))
+	if _, ok := consumeInbound(t, msgBus, shortWait); ok {
+		t.Fatal("un-mentioned post must not reach the agent")
+	}
+
+	edited := original
+	edited.Message = "@goclawbot who can check the deploy?"
+	ch.handlePostEditedEvent(ctx, editedEvent(t, edited))
+	msg, ok := consumeInbound(t, msgBus, time.Second)
+	if !ok {
+		t.Fatal("edit that adds a mention must trigger the bot")
+	}
+	if msg.Metadata["message_id"] != "p1" || msg.Metadata["local_key"] != "c1:thread:p1" {
+		t.Fatalf("edited post must be answered in its own thread, got %v", msg.Metadata)
+	}
+	if msg.Metadata[tools.MetaChatTitle] != "Town Square" {
+		t.Fatalf("chat title must come from the channel lookup, got %v", msg.Metadata)
+	}
+
+	edited.Message = "@goclawbot who can check the deploy today?"
+	ch.handlePostEditedEvent(ctx, editedEvent(t, edited))
+	if _, ok := consumeInbound(t, msgBus, shortWait); ok {
+		t.Fatal("an answered post must not be re-triggered by further edits")
+	}
+}
+
+func TestHandleEdited_IgnoresAnsweredDMOwnAndOldPosts(t *testing.T) {
+	fs := newFakeServer(t)
+	ch, msgBus := newTestChannel(t, fs, nil)
+	ctx := context.Background()
+	now := time.Now().UnixMilli()
+
+	// Answered on the first send.
+	answered := mmPost{ID: "p1", CreateAt: now, UserID: "u1", ChannelID: "c1", Message: "@goclawbot hi"}
+	ch.handlePostedEvent(ctx, postedEvent(t, answered, "O", nil))
+	if _, ok := consumeInbound(t, msgBus, time.Second); !ok {
+		t.Fatal("expected mention to be delivered")
+	}
+	answered.Message = "@goclawbot hi there"
+	ch.handlePostEditedEvent(ctx, editedEvent(t, answered))
+
+	// DM edits.
+	fs.addChannel(mmChannel{ID: "dm1", Type: "D"})
+	ch.handlePostEditedEvent(ctx, editedEvent(t, mmPost{ID: "p2", CreateAt: now, UserID: "u1", ChannelID: "dm1", Message: "@goclawbot fixed typo"}))
+
+	// Posts older than the edit window.
+	old := time.Now().Add(-editWindow - time.Hour).UnixMilli()
+	ch.handlePostEditedEvent(ctx, editedEvent(t, mmPost{ID: "p3", CreateAt: old, UserID: "u1", ChannelID: "c1", Message: "@goclawbot ancient"}))
+
+	if _, ok := consumeInbound(t, msgBus, shortWait); ok {
+		t.Fatal("answered, DM and old posts must not be triggered by edits")
+	}
+
+	// The bot's own streaming edits must not even cost a channel lookup.
+	before := len(fs.callsTo("GET", "/api/v4/channels/c9"))
+	ch.handlePostEditedEvent(ctx, editedEvent(t, mmPost{ID: "p4", CreateAt: now, UserID: testBotID, ChannelID: "c9", Message: "@goclawbot partial"}))
+	if len(fs.callsTo("GET", "/api/v4/channels/c9")) != before {
+		t.Fatal("own edits must be dropped before any API call")
+	}
+}
+
 func TestMentionMatching(t *testing.T) {
 	ch := &Channel{}
 	ch.setBotIdentity(testBotID, testBotUsername)

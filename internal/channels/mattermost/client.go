@@ -69,6 +69,12 @@ func (u *mmUser) displayName() string {
 	return u.Username
 }
 
+type mmChannel struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"` // O public, P private, D direct, G group DM
+	DisplayName string `json:"display_name"`
+}
+
 type mmFileInfo struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -227,6 +233,14 @@ func (c *apiClient) getPost(ctx context.Context, postID string) (*mmPost, error)
 		return nil, err
 	}
 	return &p, nil
+}
+
+func (c *apiClient) getChannel(ctx context.Context, channelID string) (*mmChannel, error) {
+	var ch mmChannel
+	if err := c.doJSON(ctx, http.MethodGet, "/channels/"+url.PathEscape(channelID), nil, &ch); err != nil {
+		return nil, err
+	}
+	return &ch, nil
 }
 
 func (c *apiClient) getFileInfo(ctx context.Context, fileID string) (*mmFileInfo, error) {

@@ -29,15 +29,28 @@ func participKey(channelID, rootID string) string {
 	return channelID + ":particip:" + rootID
 }
 
+// inboundPost is a post plus the channel context that came with its event
+// (or was looked up, for edits).
+type inboundPost struct {
+	post      *mmPost
+	isDM      bool
+	mentions  []string // server-computed mention list; nil for edits
+	chatTitle string
+}
+
+// ignoredPost reports posts the bot never handles: its own, system posts
+// (joins, header changes, …) and posts from other bots.
+func (c *Channel) ignoredPost(post *mmPost) bool {
+	return post.UserID == "" || post.UserID == c.botUserID || post.Type != "" || post.fromBot()
+}
+
 func (c *Channel) handlePostedEvent(ctx context.Context, ev wsEvent) {
 	post, err := parsePostedEvent(ev)
 	if err != nil {
 		slog.Debug("mattermost: skip malformed posted event", "error", err)
 		return
 	}
-
-	// Own posts, system posts (joins, header changes, …) and other bots.
-	if post.UserID == "" || post.UserID == c.botUserID || post.Type != "" || post.fromBot() {
+	if c.ignoredPost(post) {
 		return
 	}
 
@@ -46,11 +59,58 @@ func (c *Channel) handlePostedEvent(ctx context.Context, ev wsEvent) {
 		return
 	}
 
+	c.handlePost(ctx, inboundPost{
+		post:      post,
+		isDM:      ev.dataString("channel_type") == "D",
+		mentions:  eventMentions(ev),
+		chatTitle: ev.dataString("channel_display_name"),
+	})
+}
+
+// handlePostEditedEvent gives an edited channel post a second chance: when
+// the edit adds an @mention to a post the bot has not answered yet, the post
+// is handled as if it had just been sent. DM posts are always answered, so
+// their edits are ignored.
+func (c *Channel) handlePostEditedEvent(ctx context.Context, ev wsEvent) {
+	post, err := parsePostedEvent(ev)
+	if err != nil {
+		slog.Debug("mattermost: skip malformed post_edited event", "error", err)
+		return
+	}
+	// The bot's own streaming edits are most of these events: drop them
+	// before any API call.
+	if c.ignoredPost(post) {
+		return
+	}
+	if _, answered := c.dispatched.Load(post.ID); answered {
+		return
+	}
+	if !c.RequireMention() || !c.isBotMentioned(post.Message, nil) {
+		return
+	}
+	if time.Since(time.UnixMilli(post.CreateAt)) > editWindow {
+		return
+	}
+
+	info, err := c.resolveChannel(ctx, post.ChannelID)
+	if err != nil {
+		slog.Debug("mattermost: cannot resolve channel of edited post", "channel_id", post.ChannelID, "error", err)
+		return
+	}
+	if info.channelType == "D" {
+		return
+	}
+
+	c.handlePost(ctx, inboundPost{post: post, chatTitle: info.displayName})
+}
+
+func (c *Channel) handlePost(ctx context.Context, in inboundPost) {
+	post := in.post
 	ctx = store.WithTenantID(ctx, c.TenantID())
 	channelID := post.ChannelID
 	senderID := post.UserID
 
-	isDM := ev.dataString("channel_type") == "D"
+	isDM := in.isDM
 	peerKind := "group"
 	if isDM {
 		peerKind = "direct"
@@ -119,7 +179,7 @@ func (c *Channel) handlePostedEvent(ctx context.Context, ev wsEvent) {
 	}
 
 	if !isDM && c.RequireMention() {
-		mentioned := c.isBotMentioned(post.Message, eventMentions(ev))
+		mentioned := c.isBotMentioned(post.Message, in.mentions)
 
 		if !mentioned && post.RootID != "" && c.threadTTL > 0 {
 			key := participKey(channelID, post.RootID)
@@ -194,11 +254,12 @@ func (c *Channel) handlePostedEvent(ctx context.Context, ev wsEvent) {
 	if replyRootID != "" {
 		metadata["message_thread_id"] = replyRootID
 	}
-	if title := ev.dataString("channel_display_name"); title != "" && !isDM {
-		metadata[tools.MetaChatTitle] = title
+	if in.chatTitle != "" && !isDM {
+		metadata[tools.MetaChatTitle] = in.chatTitle
 	}
 
 	c.HandleAuthorizedMessageMedia(senderID, channelID, finalContent, mediaFiles, metadata, peerKind)
+	c.dispatched.Store(post.ID, time.Now())
 
 	if peerKind == "group" {
 		c.threadParticip.Store(participKey(channelID, replyRootID), time.Now())

@@ -35,11 +35,12 @@ type fakeServer struct {
 	*httptest.Server
 	t *testing.T
 
-	mu     sync.Mutex
-	calls  []recordedCall
-	posts  map[string]*mmPost // GET /posts/{id}
-	files  map[string][]byte  // GET /files/{id}
-	nextID int
+	mu       sync.Mutex
+	calls    []recordedCall
+	posts    map[string]*mmPost   // GET /posts/{id}
+	files    map[string][]byte    // GET /files/{id}
+	channels map[string]mmChannel // GET /channels/{id}; unknown IDs are public channels
+	nextID   int
 
 	// wsHandler, when set, serves /api/v4/websocket after the upgrade.
 	wsHandler func(conn *websocket.Conn)
@@ -48,9 +49,10 @@ type fakeServer struct {
 func newFakeServer(t *testing.T) *fakeServer {
 	t.Helper()
 	fs := &fakeServer{
-		t:     t,
-		posts: make(map[string]*mmPost),
-		files: make(map[string][]byte),
+		t:        t,
+		posts:    make(map[string]*mmPost),
+		files:    make(map[string][]byte),
+		channels: make(map[string]mmChannel),
 	}
 
 	mux := http.NewServeMux()
@@ -70,6 +72,17 @@ func newFakeServer(t *testing.T) *fakeServer {
 			return
 		}
 		writeJSONResponse(w, p)
+	})
+	mux.HandleFunc("GET /api/v4/channels/{id}", func(w http.ResponseWriter, r *http.Request) {
+		fs.record(r)
+		id := r.PathValue("id")
+		fs.mu.Lock()
+		ch, ok := fs.channels[id]
+		fs.mu.Unlock()
+		if !ok {
+			ch = mmChannel{ID: id, Type: "O", DisplayName: "Town Square"}
+		}
+		writeJSONResponse(w, ch)
 	})
 	mux.HandleFunc("POST /api/v4/posts", func(w http.ResponseWriter, r *http.Request) {
 		body := fs.record(r)
@@ -195,6 +208,12 @@ func (fs *fakeServer) addFile(id string, data []byte) {
 	fs.files[id] = data
 }
 
+func (fs *fakeServer) addChannel(ch mmChannel) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	fs.channels[ch.ID] = ch
+}
+
 func writeJSONResponse(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
@@ -240,6 +259,17 @@ func postedEvent(t *testing.T, post mmPost, channelType string, mentions []strin
 		data["mentions"] = string(m)
 	}
 	return wsEvent{Event: "posted", Data: data}
+}
+
+// editedEvent wraps a post in a websocket "post_edited" event, which carries
+// only the post.
+func editedEvent(t *testing.T, post mmPost) wsEvent {
+	t.Helper()
+	raw, err := json.Marshal(post)
+	if err != nil {
+		t.Fatalf("marshal post: %v", err)
+	}
+	return wsEvent{Event: "post_edited", Data: map[string]any{"post": string(raw)}}
 }
 
 // consumeInbound waits briefly for the next inbound message.

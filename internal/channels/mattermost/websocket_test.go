@@ -41,6 +41,8 @@ func TestConnectAndServe_DeliversPostedEvents(t *testing.T) {
 		}
 		_ = conn.WriteJSON(map[string]any{"event": "hello", "data": map[string]any{}})
 		_ = conn.WriteJSON(postedEvent(t, mmPost{ID: "p1", UserID: "u1", ChannelID: "dm1", Message: "hi"}, "D", nil))
+		_ = conn.WriteJSON(map[string]any{"event": "typing", "data": map[string]any{}})
+		_ = conn.WriteJSON(editedEvent(t, mmPost{ID: "p2", UserID: "u1", ChannelID: "c1", Message: "edited"}))
 		<-done
 	}
 	defer close(done)
@@ -52,14 +54,16 @@ func TestConnectAndServe_DeliversPostedEvents(t *testing.T) {
 		result <- authenticated
 	}()
 
-	select {
-	case ev := <-ch.events:
-		post, err := parsePostedEvent(ev)
-		if err != nil || post.ID != "p1" {
-			t.Fatalf("unexpected event: %+v, %v", ev, err)
+	for _, want := range []struct{ event, postID string }{{"posted", "p1"}, {"post_edited", "p2"}} {
+		select {
+		case ev := <-ch.events:
+			post, err := parsePostedEvent(ev)
+			if err != nil || ev.Event != want.event || post.ID != want.postID {
+				t.Fatalf("unexpected event: %+v, %v; want %s %s", ev, err, want.event, want.postID)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s event was not delivered", want.event)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("posted event was not delivered")
 	}
 
 	cancel()

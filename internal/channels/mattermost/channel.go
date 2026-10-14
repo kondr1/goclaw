@@ -24,7 +24,9 @@ const (
 	pairingDebounceTime   = 60 * time.Second
 	maxMessageLen         = 16000 // bytes; server limit is 16383 runes
 	userCacheTTL          = 1 * time.Hour
+	channelCacheTTL       = 1 * time.Hour
 	dedupTTL              = 5 * time.Minute
+	editWindow            = 24 * time.Hour // how long an edit can still trigger an unanswered post
 	mediaMaxBytes         = int64(20 * 1024 * 1024)
 	defaultHistoryLimit   = 50
 	defaultThreadTTLHours = 24
@@ -61,11 +63,16 @@ type Channel struct {
 
 	placeholders   sync.Map // localKey -> placeholder post ID
 	dedup          sync.Map // post ID -> time.Time
+	dispatched     sync.Map // post ID -> time.Time (post reached the agent; edits must not re-trigger it)
 	threadParticip sync.Map // channelID:particip:rootID -> time.Time (auto-reply without @mention)
 	reactions      sync.Map // chatID:postID -> *reactionState
 
 	userCacheMu sync.RWMutex
 	userCache   map[string]cachedUser
+
+	// Channel type and title for post_edited events, which carry neither.
+	channelCacheMu sync.RWMutex
+	channelCache   map[string]cachedChannel
 
 	threadTTL   time.Duration // 0 = always require @mention in threads
 	wg          sync.WaitGroup
@@ -76,6 +83,12 @@ type Channel struct {
 type cachedUser struct {
 	displayName string
 	username    string
+	fetchedAt   time.Time
+}
+
+type cachedChannel struct {
+	channelType string
+	displayName string
 	fetchedAt   time.Time
 }
 
@@ -117,12 +130,13 @@ func New(cfg Config, msgBus *bus.MessageBus, pairingSvc store.PairingStore, pend
 	}
 
 	ch := &Channel{
-		BaseChannel: base,
-		cfg:         cfg,
-		api:         newAPIClient(serverURL, cfg.BotToken),
-		events:      make(chan wsEvent, eventQueueSize),
-		userCache:   make(map[string]cachedUser),
-		threadTTL:   threadTTL,
+		BaseChannel:  base,
+		cfg:          cfg,
+		api:          newAPIClient(serverURL, cfg.BotToken),
+		events:       make(chan wsEvent, eventQueueSize),
+		userCache:    make(map[string]cachedUser),
+		channelCache: make(map[string]cachedChannel),
+		threadTTL:    threadTTL,
 	}
 	ch.SetRequireMention(requireMention)
 	ch.SetPairingService(pairingSvc)
@@ -198,6 +212,13 @@ func (c *Channel) sweepMaps() {
 		return true
 	})
 
+	c.dispatched.Range(func(k, v any) bool {
+		if t, ok := v.(time.Time); ok && now.Sub(t) > editWindow {
+			c.dispatched.Delete(k)
+		}
+		return true
+	})
+
 	if c.threadTTL > 0 {
 		c.threadParticip.Range(func(k, v any) bool {
 			if t, ok := v.(time.Time); ok && now.Sub(t) > c.threadTTL {
@@ -214,6 +235,14 @@ func (c *Channel) sweepMaps() {
 		}
 	}
 	c.userCacheMu.Unlock()
+
+	c.channelCacheMu.Lock()
+	for k, v := range c.channelCache {
+		if now.Sub(v.fetchedAt) > channelCacheTTL {
+			delete(c.channelCache, k)
+		}
+	}
+	c.channelCacheMu.Unlock()
 }
 
 // Stop closes the websocket and waits for background goroutines.
@@ -288,4 +317,25 @@ func (c *Channel) resolveUser(ctx context.Context, userID string) (displayName, 
 	c.userCache[userID] = cu
 	c.userCacheMu.Unlock()
 	return cu.displayName, cu.username
+}
+
+// resolveChannel fetches and caches the type and title of a channel.
+func (c *Channel) resolveChannel(ctx context.Context, channelID string) (cachedChannel, error) {
+	c.channelCacheMu.RLock()
+	cc, found := c.channelCache[channelID]
+	c.channelCacheMu.RUnlock()
+	if found && time.Since(cc.fetchedAt) < channelCacheTTL {
+		return cc, nil
+	}
+
+	ch, err := c.api.getChannel(ctx, channelID)
+	if err != nil {
+		return cachedChannel{}, err
+	}
+
+	cc = cachedChannel{channelType: ch.Type, displayName: ch.DisplayName, fetchedAt: time.Now()}
+	c.channelCacheMu.Lock()
+	c.channelCache[channelID] = cc
+	c.channelCacheMu.Unlock()
+	return cc, nil
 }
