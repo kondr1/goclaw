@@ -891,6 +891,7 @@ The Mattermost channel connects through a bot account: inbound posts arrive over
 - **Ignored posts**: the bot's own posts, system posts (`type` set) and posts from other bots/integrations (`props.from_bot`)
 - **Edited posts**: a `post_edited` event that adds an @mention to a channel post the bot has not answered yet triggers it once, as if the post had just been sent (within 24h of the post; the channel type and title are looked up via `/api/v4/channels/{id}` and cached for 1h). Edits of answered posts, DM posts and the bot's own posts are ignored
 - **Dedup**: post ID cache (5 min) against replays after reconnect. No channel-level debounce — bursts are merged by the gateway inbound debouncer
+- **Typing indicator**: after the placeholder, `POST /api/v4/users/{bot}/typing` (with `parent_id` in threads) is re-sent every 4s until the final reply is delivered, with a 60s safety TTL (`internal/channels/typing`). Retry notices (`placeholder_update`) keep it running
 - **Placeholder editing**: posts "Thinking..." and edits it with the first chunk of the reply; message limit 16,000 bytes per post (server limit 16,383 runes)
 - **Streaming**: optional (`dm_stream`, `group_stream`), edits the placeholder with 1000ms throttle
 - **Media**: inbound attachments downloaded from `/api/v4/files/{id}` with the bot token (20 MB per file), documents extracted to text; outbound files streamed to `/api/v4/files` (multipart through a pipe, never buffered in memory) and posted as one attachment post (up to 10 files per post)

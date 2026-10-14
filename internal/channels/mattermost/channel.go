@@ -66,6 +66,7 @@ type Channel struct {
 	dispatched     sync.Map // post ID -> time.Time (post reached the agent; edits must not re-trigger it)
 	threadParticip sync.Map // channelID:particip:rootID -> time.Time (auto-reply without @mention)
 	reactions      sync.Map // chatID:postID -> *reactionState
+	typingCtrls    sync.Map // localKey -> *typing.Controller
 
 	userCacheMu sync.RWMutex
 	userCache   map[string]cachedUser
@@ -261,6 +262,7 @@ func (c *Channel) Stop(_ context.Context) error {
 		c.GroupHistory().StopFlusher()
 		cancel()
 	}
+	c.stopAllTyping()
 
 	doneCh := make(chan struct{})
 	go func() {

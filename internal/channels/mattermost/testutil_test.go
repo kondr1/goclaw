@@ -100,6 +100,10 @@ func newFakeServer(t *testing.T) *fakeServer {
 		fs.record(r)
 		writeJSONResponse(w, map[string]string{"status": "OK"})
 	})
+	mux.HandleFunc("POST /api/v4/users/{id}/typing", func(w http.ResponseWriter, r *http.Request) {
+		fs.record(r)
+		writeJSONResponse(w, map[string]string{"status": "OK"})
+	})
 	mux.HandleFunc("POST /api/v4/reactions", func(w http.ResponseWriter, r *http.Request) {
 		fs.record(r)
 		writeJSONResponse(w, map[string]string{"status": "OK"})
@@ -239,6 +243,7 @@ func newTestChannel(t *testing.T, fs *fakeServer, mutate func(*Config)) (*Channe
 	}
 	ch.setBotIdentity(testBotID, testBotUsername)
 	ch.SetRunning(true)
+	t.Cleanup(ch.stopAllTyping)
 	return ch, msgBus
 }
 

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 )
@@ -140,6 +141,36 @@ func TestStream_EditsPlaceholderAndHandsItBack(t *testing.T) {
 	ch.FinalizeStream(context.Background(), "dm1", stream)
 	if pID, ok := ch.placeholders.Load("dm1"); !ok || pID != "ph1" {
 		t.Fatal("FinalizeStream must hand the placeholder back to Send")
+	}
+}
+
+func TestTyping_StartsInThreadAndStopsOnFinalSend(t *testing.T) {
+	fs := newFakeServer(t)
+	ch, msgBus := newTestChannel(t, fs, nil)
+	ctx := context.Background()
+
+	ch.handlePostedEvent(ctx, postedEvent(t, mmPost{ID: "p1", UserID: "u1", ChannelID: "c1", Message: "@goclawbot hi"}, "O", nil))
+	if _, ok := consumeInbound(t, msgBus, time.Second); !ok {
+		t.Fatal("expected inbound message")
+	}
+	typingCalls := fs.callsTo("POST", "/api/v4/users/"+testBotID+"/typing")
+	if len(typingCalls) != 1 || typingCalls[0].Body["channel_id"] != "c1" || typingCalls[0].Body["parent_id"] != "p1" {
+		t.Fatalf("typing must be shown in the reply thread, got %+v", typingCalls)
+	}
+
+	meta := map[string]string{"placeholder_key": "c1:thread:p1", "message_thread_id": "p1"}
+	retry := map[string]string{"placeholder_key": "c1:thread:p1", "placeholder_update": "true"}
+	if err := ch.Send(ctx, bus.OutboundMessage{ChatID: "c1", Content: "Retrying...", Metadata: retry}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ch.typingCtrls.Load("c1:thread:p1"); !ok {
+		t.Fatal("placeholder update must keep the typing indicator")
+	}
+	if err := ch.Send(ctx, bus.OutboundMessage{ChatID: "c1", Content: "hello", Metadata: meta}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ch.typingCtrls.Load("c1:thread:p1"); ok {
+		t.Fatal("final send must stop the typing indicator")
 	}
 }
 

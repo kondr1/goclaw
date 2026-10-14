@@ -42,6 +42,7 @@ func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 		}
 		return nil
 	}
+	defer c.stopTyping(placeholderKey)
 
 	fileIDs, failed := c.uploadMedia(ctx, channelID, msg.Media)
 	chunks := channels.ChunkMarkdown(msg.Content, maxMessageLen)

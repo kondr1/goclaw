@@ -228,6 +228,8 @@ func (c *Channel) handlePost(ctx context.Context, in inboundPost) {
 	} else {
 		slog.Debug("mattermost: placeholder post failed", "channel_id", channelID, "error", err)
 	}
+	// After the placeholder: clients clear the indicator when the typer posts.
+	c.startTyping(localKey, channelID, replyRootID)
 
 	finalContent := content
 	if peerKind == "group" {

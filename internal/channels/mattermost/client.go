@@ -268,6 +268,16 @@ func (c *apiClient) deletePost(ctx context.Context, postID string) error {
 	return c.doJSON(ctx, http.MethodDelete, "/posts/"+url.PathEscape(postID), nil, nil)
 }
 
+// userTyping shows "<bot> is typing…" in a channel, or in a thread when
+// parentID is set. Clients hide it after a few seconds or on the next post.
+func (c *apiClient) userTyping(ctx context.Context, userID, channelID, parentID string) error {
+	body := map[string]string{"channel_id": channelID}
+	if parentID != "" {
+		body["parent_id"] = parentID
+	}
+	return c.doJSON(ctx, http.MethodPost, "/users/"+url.PathEscape(userID)+"/typing", body, nil)
+}
+
 func (c *apiClient) addReaction(ctx context.Context, userID, postID, emoji string) error {
 	reaction := map[string]string{"user_id": userID, "post_id": postID, "emoji_name": emoji}
 	return c.doJSON(ctx, http.MethodPost, "/reactions", reaction, nil)
