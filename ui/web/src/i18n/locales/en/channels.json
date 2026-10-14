@@ -469,7 +469,7 @@
     },
     "group_dm_as_direct": {
       "label": "Group messages as DMs",
-      "help": "Treat group direct messages (3–8 people) like DMs: reply to every message without @mention or threads, apply the DM policy. Off = handle them like channels."
+      "help": "Treat group direct messages (3–8 people) like DMs: reply to every message without @mention or threads. The group policy still applies and the conversation stays one shared group session. Off = handle them like channels."
     },
     "skills": {
       "label": "Skills Filter",

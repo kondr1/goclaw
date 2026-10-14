@@ -200,7 +200,7 @@ type MattermostConfig struct {
 	BlockReply      *bool               `json:"block_reply,omitempty"`        // override gateway block_reply (nil = inherit)
 	ChatBehavior    *ChatBehaviorConfig `json:"chat_behavior,omitempty"`      // override gateway chat behavior (nil = inherit)
 	ThreadTTL       *int                `json:"thread_ttl,omitempty"`         // hours before thread participation expires (default 24, 0=always require @mention)
-	GroupDMAsDirect *bool               `json:"group_dm_as_direct,omitempty"` // handle group DMs (channel type G) like DMs (default false = like channels)
+	GroupDMAsDirect *bool               `json:"group_dm_as_direct,omitempty"` // answer group DMs (channel type G) flat like DMs, without mention or threads; still group peers (default false = like channels)
 }
 
 type WhatsAppConfig struct {

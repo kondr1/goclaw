@@ -893,23 +893,24 @@ Auto-enables when both are set. `bot_token` is masked in `config.get` and never 
 
 ### Key Behaviors
 
-- **Websocket**: `/api/v4/websocket` with `authentication_challenge`; client pings every 30s, reconnects with exponential backoff (1s → 60s). A rejected token stops the channel with an `auth` failure instead of reconnecting forever
-- **Peer kinds**: channel type `D` → direct; `O`, `P` (public, private) → group. Group DMs (`G`, 3–8 people) are group by default; `group_dm_as_direct: true` handles them as direct (no mention gating or threads, DM policy)
-- **Mention gating**: `require_mention` default true. A post counts as a mention when the server lists the bot in `mentions` or the text contains `@botusername` as a whole word; the mention is stripped from content
+- **Websocket**: `/api/v4/websocket` with `authentication_challenge`; client pings every 30s, reconnects with exponential backoff (1s → 60s). A rejected token stops the channel with an `auth` failure instead of reconnecting forever; when a session drops before authenticating, `/users/me` is checked first, because a bad challenge may just close the socket
+- **Peer kinds**: channel type `D` → direct; `O`, `P` (public, private) → group. Group DMs (`G`, 3–8 people) are group by default; `group_dm_as_direct: true` answers every post there flat, like a DM (no mention gating, no reply threads), but they stay group peers: group policy, one shared group session and group-scoped user context, so participants never share DM-level access
+- **Mention gating**: `require_mention` default true. A post counts as a mention only when the text contains `@botusername` as a whole word; the mention is stripped from content. The server's `mentions` list is ignored because it also includes everyone notified by `@channel`, `@all`, `@here` and group mentions
 - **Threads**: in channels the bot always answers in a thread (rooted at the triggering post), and the whole thread is one session (`local_key = channelID:thread:rootID`). DMs stay flat unless the user replies in a thread. Thread replies include the root post as `[Replying to …]` context
 - **Thread participation cache**: after the bot replies in a thread, later posts there trigger it without @mention for `thread_ttl` hours (default 24, `0` = always require @mention)
 - **Group history**: un-mentioned posts are kept per channel (top-level) or per thread (`parent_history_key` = channel) and prepended on the next mention
 - **Ignored posts**: the bot's own posts, system posts (`type` set) and posts from other bots/integrations (`props.from_bot`)
 - **Edited posts**: a `post_edited` event that adds an @mention to a channel post the bot has not answered yet triggers it once, as if the post had just been sent (within 24h of the post; the channel type and title are looked up via `/api/v4/channels/{id}` and cached for 1h). Edits of answered posts, DM posts and the bot's own posts are ignored
 - **Dedup**: post ID cache (5 min) against replays after reconnect. No channel-level debounce — bursts are merged by the gateway inbound debouncer
-- **Typing indicator**: after the placeholder, `POST /api/v4/users/{bot}/typing` (with `parent_id` in threads) is re-sent every 4s until the final reply is delivered, with a 60s safety TTL (`internal/channels/typing`). Retry notices (`placeholder_update`) keep it running
-- **Placeholder editing**: posts "Thinking..." and edits it with the first chunk of the reply; message limit 16,000 bytes per post (server limit 16,383 runes)
+- **Typing indicator**: after the placeholder, `POST /api/v4/users/{bot}/typing` (with `parent_id` in threads) is re-sent every 4s until the final reply (the outbound carrying `placeholder_key`) is delivered, with a 60s safety TTL (`internal/channels/typing`). Retry notices, block replies, quick-acks and progress messages keep it running
+- **Placeholder editing**: posts "Thinking..." and edits it with the first chunk of the reply; message limit 16,000 bytes per post (server limit 16,383 runes). One placeholder per local key: further posts to the same DM or thread while one is pending reuse it, and the first message to arrive (interim or final) takes it
+- **Run-scoped messages**: block replies, quick-acks and progress arrive with the local key as `ChatID`; `Send` splits it back into the channel ID and thread root
 - **Streaming**: optional (`dm_stream`, `group_stream`), edits the placeholder with 1000ms throttle
 - **Media**: inbound attachments downloaded from `/api/v4/files/{id}` with the bot token (20 MB per file), documents extracted to text; outbound files streamed to `/api/v4/files` (multipart through a pipe, never buffered in memory) and posted as one attachment post (up to 10 files per post)
 - **Reactions**: `reaction_level` off/minimal/full with system emoji (thinking_face, hammer_and_wrench, white_check_mark, x, hourglass_flowing_sand)
 - **Formatting**: Mattermost renders Markdown natively, so replies are sent as-is
 - **Attachment cards**: the agent may write a fenced block with language `attachment` holding a JSON object or array of Mattermost message attachments (`color`, `pretext`, `title`, `title_link`, `text`, `fields`, `image_url`, `thumb_url`, `author_*`, `footer*`). Valid blocks are removed from the text and sent as `props.attachments` on the last text post (or a card-only post); invalid JSON stays in the text. Interactive `actions` are not supported. The system prompt for Mattermost explains the syntax (`buildChannelFormattingHint`); streaming hides finished blocks
-- **Pairing / policies**: same `dm_policy` / `group_policy` semantics as Slack; `allowlist` accepts either user IDs or channel IDs in `allow_from`
+- **Pairing / policies**: same `dm_policy` / `group_policy` semantics as Slack; `allowlist` accepts either user IDs or channel IDs in `allow_from`. An unpaired channel gets the pairing prompt only for posts that mention the bot (or for every post when mention gating is off), so ordinary chatter does not trigger it
 
 ---
 

@@ -120,7 +120,7 @@ func TestAPIClient_UploadRejectedEarlyDoesNotHang(t *testing.T) {
 
 func TestParsePostedEvent(t *testing.T) {
 	post := mmPost{ID: "p1", UserID: "u1", ChannelID: "c1", RootID: "r1", Message: "hi"}
-	ev := postedEvent(t, post, "O", []string{"bot1", "u9"})
+	ev := postedEvent(t, post, "O", nil)
 
 	got, err := parsePostedEvent(ev)
 	if err != nil {
@@ -128,9 +128,6 @@ func TestParsePostedEvent(t *testing.T) {
 	}
 	if got.ID != "p1" || got.RootID != "r1" || got.Message != "hi" {
 		t.Fatalf("unexpected post: %+v", got)
-	}
-	if ids := eventMentions(ev); len(ids) != 2 || ids[0] != "bot1" {
-		t.Fatalf("eventMentions = %v", ids)
 	}
 
 	if _, err := parsePostedEvent(wsEvent{Event: "posted"}); err == nil {

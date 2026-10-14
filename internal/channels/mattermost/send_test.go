@@ -43,6 +43,38 @@ func TestSend_EditsPlaceholderThenPostsRemainingChunks(t *testing.T) {
 	}
 }
 
+func TestSend_InterimMessageToThreadLocalKey(t *testing.T) {
+	fs := newFakeServer(t)
+	ch, _ := newTestChannel(t, fs, nil)
+	ch.startTyping("c1:thread:r1", "c1", "r1")
+
+	// Block replies, quick-acks and progress carry the local key as ChatID
+	// and no placeholder_key.
+	for _, content := range []string{"Looking into it…", "Found the logs."} {
+		err := ch.Send(context.Background(), bus.OutboundMessage{
+			ChatID:   "c1:thread:r1",
+			Content:  content,
+			Metadata: map[string]string{"local_key": "c1:thread:r1"},
+		})
+		if err != nil {
+			t.Fatalf("Send(%q): %v", content, err)
+		}
+	}
+
+	posts := fs.callsTo("POST", "/api/v4/posts")
+	if len(posts) != 2 {
+		t.Fatalf("expected two posts, got %+v", posts)
+	}
+	for _, p := range posts {
+		if p.Body["channel_id"] != "c1" || p.Body["root_id"] != "r1" {
+			t.Fatalf("interim post must go to channel c1, thread r1, got %+v", p.Body)
+		}
+	}
+	if _, ok := ch.typingCtrls.Load("c1:thread:r1"); !ok {
+		t.Fatal("interim messages must not stop the typing indicator")
+	}
+}
+
 func TestSend_EmptyContentDeletesPlaceholder(t *testing.T) {
 	fs := newFakeServer(t)
 	ch, _ := newTestChannel(t, fs, nil)

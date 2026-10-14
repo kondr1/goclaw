@@ -2,6 +2,7 @@ package mattermost
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -86,16 +87,18 @@ func TestHandlePosted_GroupRecordsHistoryUntilMentioned(t *testing.T) {
 	}
 }
 
-func TestHandlePosted_MentionFromServerList(t *testing.T) {
+func TestHandlePosted_ChannelWideMentionDoesNotTrigger(t *testing.T) {
 	fs := newFakeServer(t)
 	ch, msgBus := newTestChannel(t, fs, nil)
 
-	ch.handlePostedEvent(context.Background(), postedEvent(t, mmPost{
-		ID: "p1", UserID: "u1", ChannelID: "c1", Message: "@here status?",
-	}, "P", []string{testBotID}))
-
-	if _, ok := consumeInbound(t, msgBus, time.Second); !ok {
-		t.Fatal("mention listed by the server must trigger the bot")
+	// The server lists the bot in "mentions" for @channel/@here/@all.
+	for i, text := range []string{"@channel deploy at 5pm", "@here status?", "@all heads up"} {
+		ch.handlePostedEvent(context.Background(), postedEvent(t, mmPost{
+			ID: fmt.Sprintf("p%d", i), UserID: "u1", ChannelID: "c1", Message: text,
+		}, "O", []string{testBotID}))
+	}
+	if _, ok := consumeInbound(t, msgBus, shortWait); ok {
+		t.Fatal("channel-wide mentions must not trigger the bot")
 	}
 }
 
@@ -203,6 +206,38 @@ func TestHandlePosted_GroupPairingUsesChannelTemplate(t *testing.T) {
 	}
 }
 
+func TestHandlePosted_UnpairedChannelStaysQuietWithoutMention(t *testing.T) {
+	fs := newFakeServer(t)
+	ch, msgBus := newTestChannel(t, fs, func(c *config.MattermostConfig) { c.GroupPolicy = "pairing" })
+	ps := &fakePairingStore{}
+	ch.SetPairingService(ps)
+
+	ch.handlePostedEvent(context.Background(), postedEvent(t, mmPost{ID: "p1", UserID: "u1", ChannelID: "c1", Message: "lunch anyone?"}, "O", nil))
+	if _, ok := consumeInbound(t, msgBus, shortWait); ok {
+		t.Fatal("unpaired channel must not reach the agent")
+	}
+	if len(ps.requests) != 0 || len(fs.callsTo("POST", "/api/v4/posts")) != 0 {
+		t.Fatalf("chatter without a mention must not get a pairing prompt, got requests %v", ps.requests)
+	}
+}
+
+func TestHandlePosted_SecondDMPostReusesPendingPlaceholder(t *testing.T) {
+	fs := newFakeServer(t)
+	ch, msgBus := newTestChannel(t, fs, nil)
+	ctx := context.Background()
+
+	ch.handlePostedEvent(ctx, postedEvent(t, mmPost{ID: "p1", UserID: "u1", ChannelID: "dm1", Message: "first"}, "D", nil))
+	ch.handlePostedEvent(ctx, postedEvent(t, mmPost{ID: "p2", UserID: "u1", ChannelID: "dm1", Message: "second"}, "D", nil))
+	for range 2 {
+		if _, ok := consumeInbound(t, msgBus, time.Second); !ok {
+			t.Fatal("expected both posts to be delivered")
+		}
+	}
+	if posts := fs.callsTo("POST", "/api/v4/posts"); len(posts) != 1 {
+		t.Fatalf("a pending placeholder must be reused, got %d placeholder posts", len(posts))
+	}
+}
+
 func TestHandlePosted_DownloadsAttachments(t *testing.T) {
 	fs := newFakeServer(t)
 	ch, msgBus := newTestChannel(t, fs, nil)
@@ -244,8 +279,12 @@ func TestHandlePosted_GroupDMKindFollowsSetting(t *testing.T) {
 	if !ok {
 		t.Fatal("group_dm_as_direct must answer group DMs without a mention")
 	}
-	if msg.PeerKind != "direct" || msg.Metadata["local_key"] != "g1" || msg.Metadata["message_thread_id"] != "" {
-		t.Fatalf("group DM must be handled as a flat DM, got kind %q metadata %v", msg.PeerKind, msg.Metadata)
+	if msg.Metadata["local_key"] != "g1" || msg.Metadata["message_thread_id"] != "" {
+		t.Fatalf("group DM must be answered flat, got metadata %v", msg.Metadata)
+	}
+	// Still a group peer: participants must not share a DM session.
+	if msg.PeerKind != "group" {
+		t.Fatalf("PeerKind = %q, want group", msg.PeerKind)
 	}
 }
 
@@ -334,7 +373,7 @@ func TestMentionMatching(t *testing.T) {
 		{"no mention", false},
 	}
 	for _, tc := range cases {
-		if got := ch.isBotMentioned(tc.text, nil); got != tc.want {
+		if got := ch.isBotMentioned(tc.text); got != tc.want {
 			t.Errorf("isBotMentioned(%q) = %v, want %v", tc.text, got, tc.want)
 		}
 	}

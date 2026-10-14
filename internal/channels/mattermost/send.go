@@ -22,16 +22,24 @@ func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 		return fmt.Errorf("mattermost bot not running")
 	}
 
-	channelID := msg.ChatID
-	if channelID == "" {
+	if msg.ChatID == "" {
 		return fmt.Errorf("empty chat ID for mattermost send")
 	}
 
-	placeholderKey := channelID
-	if pk := msg.Metadata["placeholder_key"]; pk != "" {
+	// Run-scoped messages (block replies, quick-acks, progress, retry notices)
+	// carry the local key ("<channel>:thread:<root>") as ChatID; final replies
+	// carry the channel ID plus placeholder_key.
+	channelID, keyRootID := splitLocalKey(msg.ChatID)
+	rootID := msg.Metadata["message_thread_id"]
+	if rootID == "" {
+		rootID = keyRootID
+	}
+
+	placeholderKey := msg.ChatID
+	pk, final := msg.Metadata["placeholder_key"]
+	if final && pk != "" {
 		placeholderKey = pk
 	}
-	rootID := msg.Metadata["message_thread_id"]
 
 	// Placeholder update (LLM retry notification) keeps the placeholder.
 	if msg.Metadata["placeholder_update"] == "true" {
@@ -42,7 +50,12 @@ func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 		}
 		return nil
 	}
-	defer c.stopTyping(placeholderKey)
+	// Interim messages may take over the placeholder (keeping posts in
+	// order), but the agent is still working: only the final reply stops
+	// the typing indicator.
+	if final {
+		defer c.stopTyping(placeholderKey)
+	}
 
 	text, cards := extractAttachments(msg.Content)
 	fileIDs, failed := c.uploadMedia(ctx, channelID, msg.Media)

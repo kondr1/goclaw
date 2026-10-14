@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -25,6 +24,15 @@ func threadKey(channelID, rootID string) string {
 	return channelID + ":thread:" + rootID
 }
 
+// splitLocalKey splits a local key back into the channel ID and thread root
+// ("" when the key has no thread suffix).
+func splitLocalKey(key string) (channelID, rootID string) {
+	if channelID, rootID, ok := strings.Cut(key, ":thread:"); ok {
+		return channelID, rootID
+	}
+	return key, ""
+}
+
 func participKey(channelID, rootID string) string {
 	return channelID + ":particip:" + rootID
 }
@@ -32,15 +40,16 @@ func participKey(channelID, rootID string) string {
 // inboundPost is a post plus the channel context that came with its event
 // (or was looked up, for edits).
 type inboundPost struct {
-	post      *mmPost
-	isDM      bool
-	mentions  []string // server-computed mention list; nil for edits
-	chatTitle string
+	post        *mmPost
+	channelType string // O public, P private, D direct, G group DM
+	chatTitle   string
 }
 
-// isDirectChannel reports whether a Mattermost channel type is handled as a
-// DM: always for "D", and for group DMs ("G") when group_dm_as_direct is on.
-func (c *Channel) isDirectChannel(channelType string) bool {
+// flatChannel reports channel types where the bot answers every post in
+// place, without mention gating or reply threads: DMs always, group DMs when
+// group_dm_as_direct is on. Group DMs stay "group" peers either way, so
+// participants never share a DM session or each other's DM-level access.
+func (c *Channel) flatChannel(channelType string) bool {
 	switch channelType {
 	case "D":
 		return true
@@ -73,10 +82,9 @@ func (c *Channel) handlePostedEvent(ctx context.Context, ev wsEvent) {
 	}
 
 	c.handlePost(ctx, inboundPost{
-		post:      post,
-		isDM:      c.isDirectChannel(ev.dataString("channel_type")),
-		mentions:  eventMentions(ev),
-		chatTitle: ev.dataString("channel_display_name"),
+		post:        post,
+		channelType: ev.dataString("channel_type"),
+		chatTitle:   ev.dataString("channel_display_name"),
 	})
 }
 
@@ -98,7 +106,7 @@ func (c *Channel) handlePostEditedEvent(ctx context.Context, ev wsEvent) {
 	if _, answered := c.dispatched.Load(post.ID); answered {
 		return
 	}
-	if !c.RequireMention() || !c.isBotMentioned(post.Message, nil) {
+	if !c.RequireMention() || !c.isBotMentioned(post.Message) {
 		return
 	}
 	if time.Since(time.UnixMilli(post.CreateAt)) > editWindow {
@@ -110,11 +118,11 @@ func (c *Channel) handlePostEditedEvent(ctx context.Context, ev wsEvent) {
 		slog.Debug("mattermost: cannot resolve channel of edited post", "channel_id", post.ChannelID, "error", err)
 		return
 	}
-	if c.isDirectChannel(info.channelType) {
+	if c.flatChannel(info.channelType) {
 		return
 	}
 
-	c.handlePost(ctx, inboundPost{post: post, chatTitle: info.displayName})
+	c.handlePost(ctx, inboundPost{post: post, channelType: info.channelType, chatTitle: info.displayName})
 }
 
 func (c *Channel) handlePost(ctx context.Context, in inboundPost) {
@@ -123,7 +131,10 @@ func (c *Channel) handlePost(ctx context.Context, in inboundPost) {
 	channelID := post.ChannelID
 	senderID := post.UserID
 
-	isDM := in.isDM
+	isDM := in.channelType == "D"
+	flat := c.flatChannel(in.channelType)
+	gated := !flat && c.RequireMention()
+	mentioned := c.isBotMentioned(post.Message)
 	peerKind := "group"
 	if isDM {
 		peerKind = "direct"
@@ -135,7 +146,9 @@ func (c *Channel) handlePost(ctx context.Context, in inboundPost) {
 		if !c.checkDMPolicy(ctx, senderID, channelID) {
 			return
 		}
-	} else if !c.checkGroupPolicy(ctx, senderID, channelID) {
+	} else if !c.checkGroupPolicy(ctx, senderID, channelID, mentioned || !gated) {
+		// Only a post addressed to the bot may get the pairing prompt, so an
+		// unapproved channel is not flooded while people talk among themselves.
 		return
 	}
 
@@ -181,9 +194,10 @@ func (c *Channel) handlePost(ctx context.Context, in inboundPost) {
 	}
 
 	// In channels the bot always answers in a thread, so the whole exchange
-	// lives in one per-thread session. DMs stay flat unless the user threads.
+	// lives in one per-thread session. DMs (and flat group DMs) stay flat
+	// unless the user threads.
 	replyRootID := post.RootID
-	if !isDM && replyRootID == "" {
+	if !flat && replyRootID == "" {
 		replyRootID = post.ID
 	}
 	localKey := channelID
@@ -191,9 +205,7 @@ func (c *Channel) handlePost(ctx context.Context, in inboundPost) {
 		localKey = threadKey(channelID, replyRootID)
 	}
 
-	if !isDM && c.RequireMention() {
-		mentioned := c.isBotMentioned(post.Message, in.mentions)
-
+	if gated {
 		if !mentioned && post.RootID != "" && c.threadTTL > 0 {
 			key := participKey(channelID, post.RootID)
 			if last, ok := c.threadParticip.Load(key); ok {
@@ -232,14 +244,20 @@ func (c *Channel) handlePost(ctx context.Context, in inboundPost) {
 		"sender_id", senderID, "channel_id", channelID,
 		"is_dm", isDM, "preview", channels.Truncate(content, 50))
 
-	if placeholder, err := c.api.createPost(ctx, &mmPost{
-		ChannelID: channelID,
-		RootID:    replyRootID,
-		Message:   placeholderText,
-	}); err == nil {
-		c.placeholders.Store(localKey, placeholder.ID)
-	} else {
-		slog.Debug("mattermost: placeholder post failed", "channel_id", channelID, "error", err)
+	// One placeholder per local key: a second post to the same DM or thread
+	// (merged by the inbound debouncer, or a concurrent run) reuses the
+	// pending one instead of leaving an orphaned "Thinking..." behind. The
+	// first reply to arrive takes it; later ones are posted as new posts.
+	if _, pending := c.placeholders.Load(localKey); !pending {
+		if placeholder, err := c.api.createPost(ctx, &mmPost{
+			ChannelID: channelID,
+			RootID:    replyRootID,
+			Message:   placeholderText,
+		}); err == nil {
+			c.placeholders.Store(localKey, placeholder.ID)
+		} else {
+			slog.Debug("mattermost: placeholder post failed", "channel_id", channelID, "error", err)
+		}
 	}
 	// After the placeholder: clients clear the indicator when the typer posts.
 	c.startTyping(localKey, channelID, replyRootID)
@@ -307,12 +325,11 @@ func (c *Channel) fetchThreadRootContext(ctx context.Context, rootID string) (st
 	return joinNonEmpty(replyCtx, docContent), items
 }
 
-// isBotMentioned reports whether the post mentions the bot, either through the
-// server-computed mention list or a literal @username in the text.
-func (c *Channel) isBotMentioned(text string, mentionIDs []string) bool {
-	if slices.Contains(mentionIDs, c.botUserID) {
-		return true
-	}
+// isBotMentioned reports whether the text mentions the bot as @username.
+// The server-computed "mentions" list of posted events is deliberately not
+// used: it also contains everyone notified by @channel, @all, @here and
+// group mentions, which are not requests to the bot.
+func (c *Channel) isBotMentioned(text string) bool {
 	return c.mentionRe != nil && c.mentionRe.MatchString(text)
 }
 
@@ -361,7 +378,9 @@ func (c *Channel) checkDMPolicy(ctx context.Context, senderID, channelID string)
 	}
 }
 
-func (c *Channel) checkGroupPolicy(ctx context.Context, senderID, channelID string) bool {
+// checkGroupPolicy applies group_policy. notifyPairing controls whether an
+// unpaired channel gets the pairing prompt.
+func (c *Channel) checkGroupPolicy(ctx context.Context, senderID, channelID string, notifyPairing bool) bool {
 	groupPolicy := c.cfg.GroupPolicy
 	if groupPolicy == "" {
 		groupPolicy = "open"
@@ -379,7 +398,9 @@ func (c *Channel) checkGroupPolicy(ctx context.Context, senderID, channelID stri
 	case channels.PolicyAllow:
 		return true
 	case channels.PolicyNeedsPairing:
-		c.sendPairingReply(ctx, "group:"+channelID, channelID)
+		if notifyPairing {
+			c.sendPairingReply(ctx, "group:"+channelID, channelID)
+		}
 		return false
 	default:
 		return false

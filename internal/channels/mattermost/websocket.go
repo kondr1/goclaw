@@ -57,6 +57,14 @@ func (c *Channel) runWebSocket(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		// A rejected authentication_challenge may end in a plain close with no
+		// FAIL reply, which looks like a network drop. When the session never
+		// got through, ask the REST API whether the token is still valid.
+		if !authenticated && !isAuthError(err) {
+			if _, meErr := c.api.getMe(ctx); isAuthError(meErr) {
+				err = meErr
+			}
+		}
 		if isAuthError(err) {
 			slog.Error("mattermost: token rejected, stopping channel", "channel", c.Name(), "error", err)
 			c.MarkFailed("Token rejected", err.Error(), channels.ChannelFailureKindAuth, false)
@@ -203,18 +211,4 @@ func parsePostedEvent(ev wsEvent) (*mmPost, error) {
 		return nil, fmt.Errorf("decode post: %w", err)
 	}
 	return &post, nil
-}
-
-// eventMentions decodes the JSON-encoded list of mentioned user IDs that
-// Mattermost attaches to "posted" events.
-func eventMentions(ev wsEvent) []string {
-	raw := ev.dataString("mentions")
-	if raw == "" {
-		return nil
-	}
-	var ids []string
-	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
-		return nil
-	}
-	return ids
 }

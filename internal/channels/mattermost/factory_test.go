@@ -28,7 +28,7 @@ func TestFactory_BuildsChannelFromInstance(t *testing.T) {
 	if mm.HistoryLimit() != 10 || !mm.RequireMention() {
 		t.Fatalf("history_limit=%d require_mention=%v", mm.HistoryLimit(), mm.RequireMention())
 	}
-	if !mm.isDirectChannel("G") {
+	if !mm.flatChannel("G") {
 		t.Fatal("group_dm_as_direct must be read from the instance config")
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/nextlevelbuilder/goclaw/internal/channels"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 )
 
@@ -94,5 +95,29 @@ func TestConnectAndServe_RejectedTokenIsAuthError(t *testing.T) {
 	authenticated, err := ch.connectAndServe(ctx)
 	if authenticated || !isAuthError(err) {
 		t.Fatalf("authenticated=%v err=%v, want auth error", authenticated, err)
+	}
+}
+
+func TestRunWebSocket_SilentCloseWithRevokedTokenStopsChannel(t *testing.T) {
+	fs := newFakeServer(t)
+	ch, _ := newTestChannel(t, fs, func(c *config.MattermostConfig) { c.BotToken = "revoked" })
+
+	// The server drops the socket after the challenge without a FAIL reply.
+	fs.wsHandler = func(conn *websocket.Conn) {
+		_, _, _ = conn.ReadMessage()
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ch.runWebSocket(context.Background())
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("revoked token must stop the reconnect loop")
+	}
+	if h := ch.HealthSnapshot(); h.FailureKind != channels.ChannelFailureKindAuth {
+		t.Fatalf("health = %+v, want auth failure", h)
 	}
 }

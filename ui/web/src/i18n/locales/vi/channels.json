@@ -468,7 +468,7 @@
     },
     "group_dm_as_direct": {
       "label": "Tin nhắn nhóm như DM",
-      "help": "Xử lý tin nhắn trực tiếp nhóm (3–8 người) như DM: trả lời mọi tin nhắn không cần @đề cập hay luồng, áp dụng chính sách DM. Tắt = xử lý như kênh."
+      "help": "Xử lý tin nhắn trực tiếp nhóm (3–8 người) như DM: trả lời mọi tin nhắn không cần @đề cập hay luồng. Chính sách nhóm vẫn áp dụng và cuộc trò chuyện vẫn là một phiên nhóm chung. Tắt = xử lý như kênh."
     },
     "skills": {
       "label": "Bộ lọc skill",
