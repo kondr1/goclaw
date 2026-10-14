@@ -354,6 +354,10 @@
       "label": "API Server URL",
       "help": "Custom Telegram Bot API server for large file uploads (up to 2GB). Leave empty for default."
     },
+    "server_url": {
+      "label": "Server URL",
+      "help": "Base URL of your Mattermost server"
+    },
     "proxy": {
       "label": "HTTP Proxy",
       "help": "Route bot traffic through an HTTP proxy"

@@ -353,6 +353,10 @@
       "label": "API 服务器 URL",
       "help": "自定义 Telegram Bot API 服务器用于大文件上传（最大 2GB）。留空使用默认服务器。"
     },
+    "server_url": {
+      "label": "服务器 URL",
+      "help": "Mattermost 服务器的基础 URL"
+    },
     "proxy": {
       "label": "HTTP 代理",
       "help": "通过 HTTP 代理路由Bot流量"

@@ -296,6 +296,10 @@
       "label": "API 서버 URL",
       "help": "대용량 파일 업로드(최대 2GB)를 위한 커스텀 Telegram Bot API 서버. 기본값을 사용하려면 비워두세요."
     },
+    "server_url": {
+      "label": "서버 URL",
+      "help": "Mattermost 서버의 기본 URL"
+    },
     "proxy": {
       "label": "HTTP 프록시",
       "help": "HTTP 프록시를 통해 봇 트래픽 라우팅"
