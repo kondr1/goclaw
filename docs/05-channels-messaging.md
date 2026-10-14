@@ -894,7 +894,7 @@ Auto-enables when both are set. `bot_token` is masked in `config.get` and never 
 ### Key Behaviors
 
 - **Websocket**: `/api/v4/websocket` with `authentication_challenge`; client pings every 30s, reconnects with exponential backoff (1s → 60s). A rejected token stops the channel with an `auth` failure instead of reconnecting forever
-- **Peer kinds**: channel type `D` → direct; `O`, `P`, `G` (public, private, group DM) → group
+- **Peer kinds**: channel type `D` → direct; `O`, `P` (public, private) → group. Group DMs (`G`, 3–8 people) are group by default; `group_dm_as_direct: true` handles them as direct (no mention gating or threads, DM policy)
 - **Mention gating**: `require_mention` default true. A post counts as a mention when the server lists the bot in `mentions` or the text contains `@botusername` as a whole word; the mention is stripped from content
 - **Threads**: in channels the bot always answers in a thread (rooted at the triggering post), and the whole thread is one session (`local_key = channelID:thread:rootID`). DMs stay flat unless the user replies in a thread. Thread replies include the root post as `[Replying to …]` context
 - **Thread participation cache**: after the bot replies in a thread, later posts there trigger it without @mention for `thread_ttl` hours (default 24, `0` = always require @mention)

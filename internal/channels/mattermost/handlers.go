@@ -38,6 +38,19 @@ type inboundPost struct {
 	chatTitle string
 }
 
+// isDirectChannel reports whether a Mattermost channel type is handled as a
+// DM: always for "D", and for group DMs ("G") when group_dm_as_direct is on.
+func (c *Channel) isDirectChannel(channelType string) bool {
+	switch channelType {
+	case "D":
+		return true
+	case "G":
+		return c.cfg.GroupDMAsDirect != nil && *c.cfg.GroupDMAsDirect
+	default:
+		return false
+	}
+}
+
 // ignoredPost reports posts the bot never handles: its own, system posts
 // (joins, header changes, …) and posts from other bots.
 func (c *Channel) ignoredPost(post *mmPost) bool {
@@ -61,7 +74,7 @@ func (c *Channel) handlePostedEvent(ctx context.Context, ev wsEvent) {
 
 	c.handlePost(ctx, inboundPost{
 		post:      post,
-		isDM:      ev.dataString("channel_type") == "D",
+		isDM:      c.isDirectChannel(ev.dataString("channel_type")),
 		mentions:  eventMentions(ev),
 		chatTitle: ev.dataString("channel_display_name"),
 	})
@@ -97,7 +110,7 @@ func (c *Channel) handlePostEditedEvent(ctx context.Context, ev wsEvent) {
 		slog.Debug("mattermost: cannot resolve channel of edited post", "channel_id", post.ChannelID, "error", err)
 		return
 	}
-	if info.channelType == "D" {
+	if c.isDirectChannel(info.channelType) {
 		return
 	}
 

@@ -17,18 +17,19 @@ type mattermostCreds struct {
 
 // mattermostInstanceConfig maps the non-secret config JSONB of a channel instance.
 type mattermostInstanceConfig struct {
-	ServerURL      string                     `json:"server_url"`
-	DMPolicy       string                     `json:"dm_policy,omitempty"`
-	GroupPolicy    string                     `json:"group_policy,omitempty"`
-	AllowFrom      []string                   `json:"allow_from,omitempty"`
-	RequireMention *bool                      `json:"require_mention,omitempty"`
-	HistoryLimit   int                        `json:"history_limit,omitempty"`
-	DMStream       *bool                      `json:"dm_stream,omitempty"`
-	GroupStream    *bool                      `json:"group_stream,omitempty"`
-	ReactionLevel  string                     `json:"reaction_level,omitempty"`
-	BlockReply     *bool                      `json:"block_reply,omitempty"`
-	ChatBehavior   *config.ChatBehaviorConfig `json:"chat_behavior,omitempty"`
-	ThreadTTL      *int                       `json:"thread_ttl,omitempty"`
+	ServerURL       string                     `json:"server_url"`
+	DMPolicy        string                     `json:"dm_policy,omitempty"`
+	GroupPolicy     string                     `json:"group_policy,omitempty"`
+	AllowFrom       []string                   `json:"allow_from,omitempty"`
+	RequireMention  *bool                      `json:"require_mention,omitempty"`
+	HistoryLimit    int                        `json:"history_limit,omitempty"`
+	DMStream        *bool                      `json:"dm_stream,omitempty"`
+	GroupStream     *bool                      `json:"group_stream,omitempty"`
+	ReactionLevel   string                     `json:"reaction_level,omitempty"`
+	BlockReply      *bool                      `json:"block_reply,omitempty"`
+	ChatBehavior    *config.ChatBehaviorConfig `json:"chat_behavior,omitempty"`
+	ThreadTTL       *int                       `json:"thread_ttl,omitempty"`
+	GroupDMAsDirect *bool                      `json:"group_dm_as_direct,omitempty"`
 }
 
 // parseInstance decodes instance credentials and config into a channel config.
@@ -51,20 +52,21 @@ func parseInstance(creds, cfg json.RawMessage) (config.MattermostConfig, error) 
 	}
 
 	out := config.MattermostConfig{
-		Enabled:        true,
-		ServerURL:      ic.ServerURL,
-		BotToken:       c.BotToken,
-		AllowFrom:      ic.AllowFrom,
-		DMPolicy:       ic.DMPolicy,
-		GroupPolicy:    ic.GroupPolicy,
-		RequireMention: ic.RequireMention,
-		HistoryLimit:   ic.HistoryLimit,
-		DMStream:       ic.DMStream,
-		GroupStream:    ic.GroupStream,
-		ReactionLevel:  ic.ReactionLevel,
-		BlockReply:     ic.BlockReply,
-		ChatBehavior:   ic.ChatBehavior,
-		ThreadTTL:      ic.ThreadTTL,
+		Enabled:         true,
+		ServerURL:       ic.ServerURL,
+		BotToken:        c.BotToken,
+		AllowFrom:       ic.AllowFrom,
+		DMPolicy:        ic.DMPolicy,
+		GroupPolicy:     ic.GroupPolicy,
+		RequireMention:  ic.RequireMention,
+		HistoryLimit:    ic.HistoryLimit,
+		DMStream:        ic.DMStream,
+		GroupStream:     ic.GroupStream,
+		ReactionLevel:   ic.ReactionLevel,
+		BlockReply:      ic.BlockReply,
+		ChatBehavior:    ic.ChatBehavior,
+		ThreadTTL:       ic.ThreadTTL,
+		GroupDMAsDirect: ic.GroupDMAsDirect,
 	}
 
 	// Secure default: DB instances require pairing for channels.

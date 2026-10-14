@@ -9,7 +9,7 @@ import (
 
 func TestFactory_BuildsChannelFromInstance(t *testing.T) {
 	creds := json.RawMessage(`{"bot_token":"tok"}`)
-	cfg := json.RawMessage(`{"server_url":"https://chat.example.com/","dm_policy":"open","history_limit":10}`)
+	cfg := json.RawMessage(`{"server_url":"https://chat.example.com/","dm_policy":"open","history_limit":10,"group_dm_as_direct":true}`)
 
 	ch, err := FactoryWithPendingStore(nil)("mm-team", creds, cfg, bus.New(), nil)
 	if err != nil {
@@ -27,6 +27,9 @@ func TestFactory_BuildsChannelFromInstance(t *testing.T) {
 	}
 	if mm.HistoryLimit() != 10 || !mm.RequireMention() {
 		t.Fatalf("history_limit=%d require_mention=%v", mm.HistoryLimit(), mm.RequireMention())
+	}
+	if !mm.isDirectChannel("G") {
+		t.Fatal("group_dm_as_direct must be read from the instance config")
 	}
 }
 

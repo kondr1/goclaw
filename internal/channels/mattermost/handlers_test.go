@@ -227,6 +227,28 @@ func TestHandlePosted_DownloadsAttachments(t *testing.T) {
 	}
 }
 
+func TestHandlePosted_GroupDMKindFollowsSetting(t *testing.T) {
+	fs := newFakeServer(t)
+	ctx := context.Background()
+
+	asChannel, msgBus := newTestChannel(t, fs, nil)
+	asChannel.handlePostedEvent(ctx, postedEvent(t, mmPost{ID: "p1", UserID: "u1", ChannelID: "g1", Message: "anyone?"}, "G", nil))
+	if _, ok := consumeInbound(t, msgBus, shortWait); ok {
+		t.Fatal("by default a group DM is a channel and needs a mention")
+	}
+
+	on := true
+	asDM, msgBus := newTestChannel(t, fs, func(c *config.MattermostConfig) { c.GroupDMAsDirect = &on })
+	asDM.handlePostedEvent(ctx, postedEvent(t, mmPost{ID: "p2", UserID: "u1", ChannelID: "g1", Message: "anyone?"}, "G", nil))
+	msg, ok := consumeInbound(t, msgBus, time.Second)
+	if !ok {
+		t.Fatal("group_dm_as_direct must answer group DMs without a mention")
+	}
+	if msg.PeerKind != "direct" || msg.Metadata["local_key"] != "g1" || msg.Metadata["message_thread_id"] != "" {
+		t.Fatalf("group DM must be handled as a flat DM, got kind %q metadata %v", msg.PeerKind, msg.Metadata)
+	}
+}
+
 func TestHandleEdited_AddedMentionTriggersOnce(t *testing.T) {
 	fs := newFakeServer(t)
 	ch, msgBus := newTestChannel(t, fs, nil)
