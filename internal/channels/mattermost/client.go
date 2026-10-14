@@ -298,25 +298,25 @@ type fileUploadResponse struct {
 }
 
 // uploadFile uploads one file to a channel and returns its file ID, which is
-// then attached to a post via file_ids.
+// then attached to a post via file_ids. The multipart body is streamed
+// through a pipe, so the file is never buffered in memory.
 func (c *apiClient) uploadFile(ctx context.Context, channelID, fileName string, data io.Reader) (string, error) {
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	if err := mw.WriteField("channel_id", channelID); err != nil {
-		return "", err
-	}
-	part, err := mw.CreateFormFile("files", fileName)
-	if err != nil {
-		return "", err
-	}
-	if _, err := io.Copy(part, data); err != nil {
-		return "", err
-	}
-	if err := mw.Close(); err != nil {
-		return "", err
-	}
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
 
-	req, err := c.newRequest(ctx, http.MethodPost, "/files", &body)
+	// The writer goroutine is joined before returning: the caller closes data
+	// right after uploadFile, and it must not be read past that point.
+	written := make(chan struct{})
+	go func() {
+		defer close(written)
+		pw.CloseWithError(writeUploadForm(mw, channelID, fileName, data))
+	}()
+	defer func() {
+		_ = pr.Close() // unblocks the writer if the request ended early
+		<-written
+	}()
+
+	req, err := c.newRequest(ctx, http.MethodPost, "/files", pr)
 	if err != nil {
 		return "", err
 	}
@@ -330,4 +330,19 @@ func (c *apiClient) uploadFile(ctx context.Context, channelID, fileName string, 
 		return "", fmt.Errorf("upload returned no file info")
 	}
 	return out.FileInfos[0].ID, nil
+}
+
+// writeUploadForm writes the channel_id field and the file part.
+func writeUploadForm(mw *multipart.Writer, channelID, fileName string, data io.Reader) error {
+	if err := mw.WriteField("channel_id", channelID); err != nil {
+		return err
+	}
+	part, err := mw.CreateFormFile("files", fileName)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(part, data); err != nil {
+		return err
+	}
+	return mw.Close()
 }

@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestNormalizeServerURL(t *testing.T) {
@@ -75,6 +79,42 @@ func TestAPIClient_DownloadRejectsOversizedFile(t *testing.T) {
 	buf.Reset()
 	if err := api.downloadFile(context.Background(), "f1", &buf, 64); err != nil || buf.Len() != 64 {
 		t.Fatalf("download at the limit = %d bytes, %v", buf.Len(), err)
+	}
+}
+
+func TestAPIClient_UploadStreamsMultipart(t *testing.T) {
+	fs := newFakeServer(t)
+	api := newAPIClient(fs.URL, testToken)
+
+	id, err := api.uploadFile(context.Background(), "c1", "notes.txt", strings.NewReader("hello"))
+	if err != nil || id == "" {
+		t.Fatalf("uploadFile = %q, %v", id, err)
+	}
+	uploads := fs.callsTo("POST", "/api/v4/files")
+	if len(uploads) != 1 || uploads[0].Body["channel_id"] != "c1" || uploads[0].Body["content"] != "hello" {
+		t.Fatalf("unexpected upload: %+v", uploads)
+	}
+}
+
+func TestAPIClient_UploadRejectedEarlyDoesNotHang(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+	}))
+	t.Cleanup(srv.Close)
+	api := newAPIClient(srv.URL, testToken)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := api.uploadFile(context.Background(), "c1", "big.bin", bytes.NewReader(make([]byte, 32<<20)))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected upload error")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("uploadFile did not return after the server rejected the body")
 	}
 }
 

@@ -892,7 +892,7 @@ The Mattermost channel connects through a bot account: inbound posts arrive over
 - **Dedup**: post ID cache (5 min) against replays after reconnect. No channel-level debounce — bursts are merged by the gateway inbound debouncer
 - **Placeholder editing**: posts "Thinking..." and edits it with the first chunk of the reply; message limit 16,000 bytes per post (server limit 16,383 runes)
 - **Streaming**: optional (`dm_stream`, `group_stream`), edits the placeholder with 1000ms throttle
-- **Media**: inbound attachments downloaded from `/api/v4/files/{id}` with the bot token (20 MB per file), documents extracted to text; outbound files uploaded via `/api/v4/files` and posted as one attachment post (up to 10 files per post)
+- **Media**: inbound attachments downloaded from `/api/v4/files/{id}` with the bot token (20 MB per file), documents extracted to text; outbound files streamed to `/api/v4/files` (multipart through a pipe, never buffered in memory) and posted as one attachment post (up to 10 files per post)
 - **Reactions**: `reaction_level` off/minimal/full with system emoji (thinking_face, hammer_and_wrench, white_check_mark, x, hourglass_flowing_sand)
 - **Formatting**: Mattermost renders Markdown natively, so replies are sent as-is
 - **Pairing / policies**: same `dm_policy` / `group_policy` semantics as Slack; `allowlist` accepts either user IDs or channel IDs in `allow_from`. DB instances default `group_policy` to `pairing`
