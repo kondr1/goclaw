@@ -880,16 +880,29 @@ The Mattermost channel connects through a bot account: inbound posts arrive over
    - credentials: `bot_token`
    - config: `server_url` (e.g. `https://chat.example.com`; `http` is allowed for internal servers)
 
+   A server on a private network (10.x, 172.16–31.x, 192.168.x, localhost) also needs `GOCLAW_ALLOW_PRIVATE_MATTERMOST_URLS=true` on the gateway (see Egress policy below).
+
    Or set `channels.mattermost` in `config.json` (same keys as the instance config, plus `enabled` and `bot_token`).
 
 ### Environment Variables
 
 ```
-GOCLAW_MATTERMOST_SERVER_URL  → channels.mattermost.server_url
-GOCLAW_MATTERMOST_BOT_TOKEN   → channels.mattermost.bot_token
+GOCLAW_MATTERMOST_SERVER_URL          → channels.mattermost.server_url
+GOCLAW_MATTERMOST_BOT_TOKEN           → channels.mattermost.bot_token
+GOCLAW_ALLOW_PRIVATE_MATTERMOST_URLS  → allow private/loopback server addresses (true/1/yes)
 ```
 
 Auto-enables when both are set. `bot_token` is masked in `config.get` and never written to `config.json`. In config mode `group_policy` defaults to `open` (as for Slack); DB instances default to `pairing`.
+
+### Egress Policy
+
+`server_url` is operator-configured, but the gateway still treats it as an outbound target that must not open a path into the internal network (same policy as LLM provider URLs):
+
+- Every REST and websocket connection is checked at dial time against `security.IsBlocked` (`internal/channels/mattermost/egress.go`), on the IP actually dialed — so redirects (e.g. file downloads redirected to object storage) and DNS rebinding are covered too
+- Private and loopback addresses are refused unless `GOCLAW_ALLOW_PRIVATE_MATTERMOST_URLS=true`; ranges opened with `GOCLAW_SSRF_ALLOWED_CIDRS` are honoured
+- Link-local (cloud metadata `169.254.169.254`), multicast, unspecified and reserved ranges are always refused
+- No HTTP proxy is used for Mattermost traffic, so the check sees the real server address
+- A refused address fails `Start` with a non-retryable `config` health state and a hint about the env var; blocks are logged as `security.mattermost.ssrf_block`
 
 ### Key Behaviors
 

@@ -5,6 +5,7 @@ package mattermost
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -135,11 +136,14 @@ func (c *Channel) Start(ctx context.Context) error {
 
 	me, err := c.api.getMe(ctx)
 	if err != nil {
-		kind := channels.ChannelFailureKindNetwork
-		if isAuthError(err) {
-			kind = channels.ChannelFailureKindAuth
+		switch {
+		case errors.Is(err, errBlockedAddress):
+			c.MarkFailed("Server address not allowed", err.Error(), channels.ChannelFailureKindConfig, false)
+		case isAuthError(err):
+			c.MarkFailed("Cannot reach Mattermost", err.Error(), channels.ChannelFailureKindAuth, false)
+		default:
+			c.MarkFailed("Cannot reach Mattermost", err.Error(), channels.ChannelFailureKindNetwork, true)
 		}
-		c.MarkFailed("Cannot reach Mattermost", err.Error(), kind, kind != channels.ChannelFailureKindAuth)
 		return fmt.Errorf("mattermost users/me failed: %w", err)
 	}
 	c.setBotIdentity(me.ID, me.Username)

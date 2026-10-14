@@ -139,7 +139,7 @@ func newAPIClient(serverURL, token string) *apiClient {
 	return &apiClient{
 		baseURL: serverURL,
 		token:   token,
-		http:    &http.Client{Timeout: apiTimeout},
+		http:    newHTTPClient(apiTimeout),
 	}
 }
 

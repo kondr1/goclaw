@@ -90,7 +90,7 @@ func (c *Channel) runWebSocket(ctx context.Context) {
 // past authentication (used to reset backoff) and the reason it ended.
 func (c *Channel) connectAndServe(ctx context.Context) (bool, error) {
 	dialer := websocket.Dialer{
-		Proxy:            http.ProxyFromEnvironment,
+		NetDialContext:   newDialer(wsHandshakeTimeout).DialContext,
 		HandshakeTimeout: wsHandshakeTimeout,
 	}
 	conn, resp, err := dialer.DialContext(ctx, c.api.websocketURL(), nil)
